@@ -1,1 +1,8 @@
-# subconverter
+# subconverter（C 版本参考实现，不纳入 Go 版本仓库）
+subconverter/
+
+# Go build artifacts
+*.exe
+*.test
+*.out
+/subconverter-go
