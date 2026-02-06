@@ -2,6 +2,8 @@
 
 建议阅读顺序（由外到内）：
 - 架构设计（v1）：`ARCHITECTURE.md`
+- 开发方法与分阶段验收（v1）：`DEV_GUIDE.md`
+- 决策记录（v1）：`DECISIONS.md`
 - HTTP API 规范（v1）：`SPEC_HTTP_API.md`
 - 远程拉取（Fetch）规范（v1）：`SPEC_FETCH.md`
 - SS 订阅解析规范（v1）：`SPEC_SUBSCRIPTION_SS.md`
