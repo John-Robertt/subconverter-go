@@ -7,44 +7,95 @@
     <title>subconverter-go</title>
     <style>
       :root{
-        /* Required palette */
-        --primary-100:#FF4081;
-        --primary-200:#ff79b0;
-        --primary-300:#ffe4ff;
-        --accent-100:#00E5FF;
-        --accent-200:#00829b;
-        --text-100:#333333;
-        --text-200:#5c5c5c;
-        --bg-100:#F5F5F5;
-        --bg-200:#ebebeb;
-        --bg-300:#c2c2c2;
+        /* Soft SaaS palette (lavender -> blue). */
+        --lavender-50:#f7f4ff;
+        --lavender-100:#efe9ff;
+        --blue-50:#f0f7ff;
+        --blue-100:#e6f1ff;
 
-        /* Style tokens */
-        --radius-lg: 22px;
-        --radius-md: 16px;
-        --shadow-1: 0 12px 40px rgba(0,0,0,.08);
-        --shadow-2: 0 18px 60px rgba(0,0,0,.12);
-        --glass: rgba(255,255,255,.58);
-        --glass-2: rgba(255,255,255,.40);
-        --glass-border: rgba(255,255,255,.45);
+        --primary-100:#8b5cf6;
+        --primary-200:#a78bfa;
+        --primary-300:#ede9fe;
+        --accent-100:#3b82f6;
+        --accent-200:#1d4ed8;
+
+        --text-100:#0f172a;
+        --text-200:rgba(15,23,42,.68);
+        --bg-100:#f8f9ff;
+        --bg-200:#eef2ff;
+        --bg-300:#e2e8f0;
+
+        --glass:rgba(255,255,255,.62);
+        --glass-2:rgba(255,255,255,.38);
+        --glass-border:rgba(255,255,255,.72);
+
+        --shadow-1:0 10px 30px rgba(15,23,42,.10);
+        --shadow-2:0 18px 44px rgba(15,23,42,.14);
+
+        --radius-card:22px;
+        --radius-input:16px;
+        --radius-btn:14px;
+
+        --blur:14px;
+
+        --ring:0 0 0 4px rgba(59,130,246,.22);
+        --ring-primary:0 0 0 4px rgba(139,92,246,.22);
       }
 
       *{ box-sizing:border-box; }
       html,body{ height:100%; }
       body{
         margin:0;
-        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC",
+        font-family: Satoshi, Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC",
           "Noto Sans CJK SC", "Source Han Sans SC", "Microsoft YaHei", sans-serif;
-        color: var(--text-100);
-        background: radial-gradient(1200px 800px at 18% 10%, rgba(255,64,129,.18), transparent 55%),
-          radial-gradient(1200px 800px at 82% 20%, rgba(0,229,255,.14), transparent 50%),
-          linear-gradient(180deg, var(--bg-100), var(--bg-200));
+        color:var(--text-100);
+        background:
+          radial-gradient(900px 600px at 16% 10%, rgba(139,92,246,.20), transparent 60%),
+          radial-gradient(900px 600px at 84% 16%, rgba(59,130,246,.20), transparent 60%),
+          linear-gradient(135deg, var(--lavender-50) 0%, var(--blue-50) 48%, #ffffff 100%);
+        overflow-x:hidden;
+      }
+
+      body::before{
+        content:"";
+        position: fixed;
+        inset: 0;
+        pointer-events:none;
+        background:
+          radial-gradient(900px 600px at 30% 20%, rgba(255,255,255,.70), transparent 60%),
+          radial-gradient(900px 600px at 72% 26%, rgba(255,255,255,.55), transparent 62%);
+        opacity: .55;
+        mix-blend-mode: soft-light;
+        filter: blur(28px);
+      }
+
+      /* Subtle SaaS scroll affordance */
+      .scroll-progress{
+        position: fixed;
+        inset: 0 0 auto 0;
+        height: 4px;
+        z-index: 40;
+        background: rgba(255,255,255,.22);
+        border-bottom: 1px solid rgba(255,255,255,.35);
+        backdrop-filter: blur(var(--blur));
+        -webkit-backdrop-filter: blur(var(--blur));
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 220ms ease;
+      }
+      .scroll-progress__bar{
+        height: 100%;
+        width: 100%;
+        transform-origin: 0 50%;
+        transform: scaleX(0);
+        background: linear-gradient(90deg, var(--primary-100), var(--accent-100));
+        box-shadow: 0 10px 22px rgba(139,92,246,.18);
       }
 
       .wrap{
         max-width: 1120px;
         margin: 0 auto;
-        padding: 26px 18px 40px;
+        padding: 26px 18px 44px;
       }
 
       header{
@@ -63,8 +114,8 @@
       .brand h1{
         margin:0;
         font-size: 34px;
-        font-weight: 760;
-        letter-spacing: .2px;
+        font-weight: 750;
+        letter-spacing: -.2px;
         line-height: 1.1;
       }
       .brand p{
@@ -72,6 +123,7 @@
         color: var(--text-200);
         font-size: 14px;
         line-height: 1.55;
+        max-width: 56ch;
       }
 
       .badge{
@@ -83,8 +135,8 @@
         background: var(--glass);
         border: 1px solid var(--glass-border);
         box-shadow: var(--shadow-1);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
+        backdrop-filter: blur(var(--blur));
+        -webkit-backdrop-filter: blur(var(--blur));
         color: var(--text-200);
         font-size: 13px;
         white-space: nowrap;
@@ -94,7 +146,7 @@
         height: 10px;
         border-radius: 999px;
         background: var(--accent-100);
-        box-shadow: 0 0 0 6px rgba(0,229,255,.14);
+        box-shadow: 0 0 0 6px rgba(59,130,246,.14);
         animation: pulse 2.8s ease-in-out infinite;
       }
 
@@ -114,39 +166,56 @@
       }
 
       .card{
-        border-radius: var(--radius-lg);
-        background: var(--glass);
+        border-radius: var(--radius-card);
+        background: linear-gradient(180deg, var(--glass), var(--glass-2));
         border: 1px solid var(--glass-border);
         box-shadow: var(--shadow-1);
-        backdrop-filter: blur(18px);
-        -webkit-backdrop-filter: blur(18px);
+        backdrop-filter: blur(var(--blur));
+        -webkit-backdrop-filter: blur(var(--blur));
         overflow:hidden;
         position: relative;
+        transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 220ms ease, border-color 220ms ease;
+      }
+      .card:hover{
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-2);
+        border-color: rgba(255,255,255,.86);
       }
       .card::before{
         content:"";
         position:absolute;
-        inset:-1px;
-        background: radial-gradient(600px 220px at 20% 0%, rgba(255,255,255,.55), transparent 60%),
-          radial-gradient(600px 220px at 80% 0%, rgba(255,255,255,.45), transparent 60%);
+        inset:0;
+        background:
+          radial-gradient(700px 420px at 18% 0%, rgba(255,255,255,.80), transparent 55%),
+          radial-gradient(700px 420px at 82% 28%, rgba(255,255,255,.35), transparent 62%);
         pointer-events:none;
+        opacity: .55;
+        z-index: 0;
       }
 
       .card .inner{
         position: relative;
         padding: 18px 18px 16px;
+        z-index: 1;
       }
 
       .card h2{
         margin:0 0 10px;
         font-size: 16px;
-        font-weight: 720;
+        font-weight: 700;
+        letter-spacing: -.1px;
       }
 
       .tabs{
         display:flex;
         gap: 10px;
+        padding: 6px;
         margin-bottom: 14px;
+        border-radius: 999px;
+        background: rgba(255,255,255,.44);
+        border: 1px solid rgba(255,255,255,.74);
+        backdrop-filter: blur(var(--blur));
+        -webkit-backdrop-filter: blur(var(--blur));
       }
       .tab{
         display:inline-flex;
@@ -156,18 +225,22 @@
         border-radius: 999px;
         cursor:pointer;
         user-select:none;
-        border: 1px solid rgba(255,255,255,.55);
-        background: rgba(255,255,255,.38);
+        border: 0;
+        background: transparent;
         color: var(--text-200);
         font-weight: 650;
         font-size: 13px;
-        transition: transform .16s ease, box-shadow .16s ease, background .16s ease, color .16s ease;
+        transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease, color 160ms ease;
+        outline: none;
       }
-      .tab:hover{ transform: translateY(-1px); box-shadow: 0 10px 26px rgba(0,0,0,.08); }
+      .tab:hover{ transform: translateY(-1px); }
       .tab[aria-selected="true"]{
-        background: linear-gradient(180deg, rgba(255,64,129,.26), rgba(0,229,255,.18));
+        background: linear-gradient(135deg, rgba(139,92,246,.24), rgba(59,130,246,.18));
         color: var(--text-100);
-        border-color: rgba(255,255,255,.68);
+        box-shadow: 0 10px 24px rgba(15,23,42,.10);
+      }
+      .tab:focus-visible{
+        box-shadow: var(--ring);
       }
 
       .form{
@@ -189,14 +262,16 @@
 
       input, select, textarea{
         font: inherit;
-        border: 0;
+        border: 1px solid rgba(255,255,255,.76);
         outline: none;
         padding: 12px 12px;
-        border-radius: var(--radius-md);
-        background: rgba(255,255,255,.62);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 10px 30px rgba(0,0,0,.06);
+        border-radius: var(--radius-input);
+        background: rgba(255,255,255,.52);
+        box-shadow: 0 10px 24px rgba(15,23,42,.06);
         color: var(--text-100);
-        transition: transform .16s ease, box-shadow .16s ease, background .16s ease;
+        transition: box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
+        backdrop-filter: blur(var(--blur));
+        -webkit-backdrop-filter: blur(var(--blur));
       }
       textarea{
         min-height: 140px;
@@ -204,8 +279,9 @@
         line-height: 1.55;
       }
       input:focus, select:focus, textarea:focus{
-        background: rgba(255,255,255,.78);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 0 0 4px rgba(255,64,129,.16), 0 18px 40px rgba(0,0,0,.09);
+        background: rgba(255,255,255,.62);
+        border-color: rgba(59,130,246,.55);
+        box-shadow: var(--ring), 0 18px 40px rgba(15,23,42,.10);
       }
 
       .full{ grid-column: 1 / -1; }
@@ -225,46 +301,54 @@
         align-items:center;
       }
       .btn{
-        border: 0;
+        border: 1px solid transparent;
         cursor:pointer;
         padding: 11px 14px;
-        border-radius: 999px;
-        font-weight: 720;
+        border-radius: var(--radius-btn);
+        font-weight: 650;
         font-size: 13px;
         letter-spacing: .1px;
-        transition: transform .16s ease, box-shadow .16s ease, filter .16s ease, opacity .16s ease;
+        transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease, opacity 160ms ease, background 160ms ease, border-color 160ms ease;
         user-select:none;
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        gap: 8px;
+        text-decoration:none;
       }
-      .btn:hover{ transform: translateY(-1px); box-shadow: var(--shadow-2); }
-      .btn:active{ transform: translateY(0); filter: saturate(1.06); }
+      .btn:hover{ transform: translateY(-1px); }
+      .btn:active{ transform: translateY(0); filter: saturate(1.04); }
+      .btn:focus-visible{
+        outline:none;
+        box-shadow: var(--ring);
+      }
 
       .btn-primary{
         color: #fff;
         background: linear-gradient(135deg, var(--primary-100), var(--accent-100));
-        box-shadow: 0 16px 46px rgba(255,64,129,.24);
-        animation: breathe 3.4s ease-in-out infinite;
+        box-shadow: 0 16px 34px rgba(139,92,246,.20);
       }
-      @keyframes breathe{
-        0%,100%{ box-shadow: 0 16px 46px rgba(255,64,129,.20); }
-        50%{ box-shadow: 0 18px 56px rgba(255,64,129,.30); }
+      .btn-primary:focus-visible{
+        box-shadow: var(--ring-primary), 0 16px 34px rgba(139,92,246,.22);
       }
       .btn-ghost{
         color: var(--text-100);
-        background: rgba(255,255,255,.46);
-        border: 1px solid rgba(255,255,255,.65);
+        background: rgba(255,255,255,.44);
+        border-color: rgba(255,255,255,.78);
+        backdrop-filter: blur(var(--blur));
+        -webkit-backdrop-filter: blur(var(--blur));
       }
       .btn-link{
         color: var(--accent-200);
         background: transparent;
         padding: 8px 8px;
-        font-weight: 680;
+        font-weight: 650;
       }
       .btn[disabled]{
         opacity: .55;
         cursor:not-allowed;
         transform:none;
         box-shadow:none;
-        animation:none;
       }
       [aria-disabled="true"]{
         pointer-events: none;
@@ -291,10 +375,12 @@
 
       .preview{
         padding: 14px;
-        border-radius: var(--radius-lg);
-        background: rgba(255,255,255,.46);
-        border: 1px solid rgba(255,255,255,.62);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 10px 30px rgba(0,0,0,.06);
+        border-radius: var(--radius-card);
+        background: rgba(255,255,255,.44);
+        border: 1px solid rgba(255,255,255,.74);
+        box-shadow: 0 10px 24px rgba(15,23,42,.06);
+        backdrop-filter: blur(var(--blur));
+        -webkit-backdrop-filter: blur(var(--blur));
       }
 
       pre{
@@ -317,8 +403,10 @@
       .chip{
         padding: 5px 10px;
         border-radius: 999px;
-        background: rgba(0,0,0,.05);
-        border: 1px solid rgba(255,255,255,.65);
+        background: rgba(255,255,255,.44);
+        border: 1px solid rgba(255,255,255,.74);
+        backdrop-filter: blur(var(--blur));
+        -webkit-backdrop-filter: blur(var(--blur));
       }
 
       .err{
@@ -332,9 +420,14 @@
       }
       footer a{ color: var(--accent-200); text-decoration: none; }
       footer a:hover{ text-decoration: underline; }
+      @media (prefers-reduced-motion: reduce){
+        .card, .btn, .tab{ transition:none; }
+        .dot{ animation:none; }
+      }
     </style>
   </head>
   <body>
+    <div class="scroll-progress" aria-hidden="true"><div class="scroll-progress__bar" id="scrollProgressBar"></div></div>
     <div class="wrap">
       <header>
         <div class="brand">
@@ -678,6 +771,40 @@
           }
         }
 
+        function initScrollProgress(){
+          const bar = document.getElementById("scrollProgressBar");
+          if (!bar) return;
+          const host = bar.parentElement;
+          if (!host) return;
+
+          let raf = 0;
+          function update(){
+            raf = 0;
+            const doc = document.documentElement;
+            const max = (doc.scrollHeight || 0) - window.innerHeight;
+            if (max <= 8){
+              host.style.opacity = "0";
+              bar.style.transform = "scaleX(0)";
+              return;
+            }
+
+            const y = window.scrollY || window.pageYOffset || 0;
+            const p = Math.max(0, Math.min(1, y / max));
+            host.style.opacity = "1";
+            bar.style.transform = "scaleX(" + p.toFixed(4) + ")";
+          }
+
+          function schedule(){
+            if (raf) return;
+            raf = requestAnimationFrame(update);
+          }
+
+          window.addEventListener("scroll", schedule, { passive: true });
+          window.addEventListener("resize", schedule);
+          schedule();
+        }
+
+        initScrollProgress();
         restore();
         health();
       })();
