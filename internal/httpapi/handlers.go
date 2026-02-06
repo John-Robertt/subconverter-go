@@ -2,8 +2,6 @@ package httpapi
 
 import (
 	"net/http"
-
-	"github.com/John-Robertt/subconverter-go/internal/model"
 )
 
 func handleHealthz(w http.ResponseWriter, r *http.Request) {
@@ -11,17 +9,34 @@ func handleHealthz(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleSub(w http.ResponseWriter, r *http.Request) {
-	WriteError(w, http.StatusInternalServerError, model.AppError{
-		Code:    "NOT_IMPLEMENTED",
-		Message: "阶段 0：/sub 尚未实现",
-		Stage:   "validate_request",
-	})
+	req, err := parseConvertGET(r)
+	if err != nil {
+		writeErrorFromErr(w, err)
+		return
+	}
+
+	out, err := runConvert(r.Context(), r, req)
+	if err != nil {
+		writeErrorFromErr(w, err)
+		return
+	}
+	WriteText(w, http.StatusOK, out)
 }
 
 func handleConvert(w http.ResponseWriter, r *http.Request) {
-	WriteError(w, http.StatusInternalServerError, model.AppError{
-		Code:    "NOT_IMPLEMENTED",
-		Message: "阶段 0：/api/convert 尚未实现",
-		Stage:   "validate_request",
-	})
+	// Prevent abusive payload sizes.
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20 /* 1 MiB */)
+
+	req, err := parseConvertPOST(r)
+	if err != nil {
+		writeErrorFromErr(w, err)
+		return
+	}
+
+	out, err := runConvert(r.Context(), r, req)
+	if err != nil {
+		writeErrorFromErr(w, err)
+		return
+	}
+	WriteText(w, http.StatusOK, out)
 }

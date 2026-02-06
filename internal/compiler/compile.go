@@ -36,6 +36,14 @@ func (e *CompileError) Error() string {
 
 func (e *CompileError) Unwrap() error { return e.Cause }
 
+// NormalizeSubscriptionProxies applies v1 determinism rules to subscription proxies:
+// normalization + dedup + deterministic naming + ordering.
+//
+// It is used by both mode=config (compile) and mode=list output.
+func NormalizeSubscriptionProxies(subs []model.Proxy) ([]model.Proxy, error) {
+	return compileProxies(subs)
+}
+
 func Compile(ctx context.Context, subs []model.Proxy, prof *profile.Spec) (*Result, error) {
 	if prof == nil {
 		return nil, &CompileError{
