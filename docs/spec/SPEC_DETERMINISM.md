@@ -112,7 +112,9 @@ v1 需要去重以避免重复节点污染策略组与 UI。去重必须确定�
 
 最终规则列表顺序必须严格为：
 1) 按 profile 的 `ruleset` 列表顺序逐个插入（不同 target 的呈现不同，但顺序必须一致）：
-   - Clash：展开 ruleset 文件内容（每个 ruleset 内部保持文件行顺序）
+   - Clash（mihomo）：输出 `RULE-SET,<PROVIDER_NAME>,<ACTION>`（不展开 ruleset 内容），并在 `rule-providers:` 中生成对应 provider
+     - `<PROVIDER_NAME>` 必须从 ruleset URL **确定性**生成（同一 URL 在同一份输出内得到同一名字）
+     - 若出现重名，按出现顺序追加 `-2`、`-3`…（保证可复现）
    - Surge/Shadowrocket/Quantumult X：输出 ruleset 的“远程引用行”（不展开到配置文件）
 2) 再按 profile 的 `rule` 列表顺序追加 inline 规则。
 

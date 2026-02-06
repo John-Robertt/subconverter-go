@@ -12,6 +12,7 @@ const (
 	AnchorProxies = "#@PROXIES@#"
 	AnchorGroups  = "#@GROUPS@#"
 	AnchorRulesets = "#@RULESETS@#"
+	AnchorRuleProviders = "#@RULE_PROVIDERS@#"
 	AnchorRules   = "#@RULES@#"
 )
 
@@ -46,6 +47,9 @@ func InjectAnchors(templateText string, blocks render.Blocks, opt AnchorOptions)
 
 	lines[pos.proxiesLine] = indentBlock(lines[pos.proxiesLine], blocks.Proxies)
 	lines[pos.groupsLine] = indentBlock(lines[pos.groupsLine], blocks.Groups)
+	if pos.ruleProvidersLine != -1 {
+		lines[pos.ruleProvidersLine] = indentBlock(lines[pos.ruleProvidersLine], blocks.RuleProviders)
+	}
 	if pos.rulesetsLine != -1 {
 		lines[pos.rulesetsLine] = indentBlock(lines[pos.rulesetsLine], blocks.Rulesets)
 	}
@@ -64,13 +68,14 @@ func InjectAnchors(templateText string, blocks render.Blocks, opt AnchorOptions)
 type anchorPos struct {
 	proxiesLine int
 	groupsLine  int
+	ruleProvidersLine int
 	rulesetsLine int
 	rulesLine   int
 }
 
 func findAndValidateAnchors(lines []string, target render.Target, templateURL string) (anchorPos, error) {
-	pos := anchorPos{proxiesLine: -1, groupsLine: -1, rulesetsLine: -1, rulesLine: -1}
-	countP, countG, countRS, countR := 0, 0, 0, 0
+	pos := anchorPos{proxiesLine: -1, groupsLine: -1, ruleProvidersLine: -1, rulesetsLine: -1, rulesLine: -1}
+	countP, countG, countRP, countRS, countR := 0, 0, 0, 0, 0
 
 	section := ""
 	for i, line := range lines {
@@ -83,6 +88,9 @@ func findAndValidateAnchors(lines []string, target render.Target, templateURL st
 		}
 		if strings.Contains(line, AnchorRulesets) && strings.TrimSpace(line) != AnchorRulesets {
 			return anchorPos{}, anchorNotStandalone(templateURL, line, AnchorRulesets)
+		}
+		if strings.Contains(line, AnchorRuleProviders) && strings.TrimSpace(line) != AnchorRuleProviders {
+			return anchorPos{}, anchorNotStandalone(templateURL, line, AnchorRuleProviders)
 		}
 		if strings.Contains(line, AnchorRules) && strings.TrimSpace(line) != AnchorRules {
 			return anchorPos{}, anchorNotStandalone(templateURL, line, AnchorRules)
@@ -121,6 +129,12 @@ func findAndValidateAnchors(lines []string, target render.Target, templateURL st
 					return anchorPos{}, sectionError(templateURL, fmt.Sprintf("%s 必须位于 [policy] 段内", AnchorGroups))
 				}
 			}
+		case AnchorRuleProviders:
+			countRP++
+			pos.ruleProvidersLine = i
+			if target != render.TargetClash {
+				return anchorPos{}, sectionError(templateURL, fmt.Sprintf("%s 仅支持 Clash 模板（target=clash）", AnchorRuleProviders))
+			}
 		case AnchorRulesets:
 			countRS++
 			pos.rulesetsLine = i
@@ -155,11 +169,17 @@ func findAndValidateAnchors(lines []string, target render.Target, templateURL st
 	if countR == 0 {
 		return anchorPos{}, anchorMissing(templateURL, AnchorRules)
 	}
+	if target == render.TargetClash && countRP == 0 {
+		return anchorPos{}, anchorMissing(templateURL, AnchorRuleProviders)
+	}
 	if countP > 1 {
 		return anchorPos{}, anchorDup(templateURL, AnchorProxies)
 	}
 	if countG > 1 {
 		return anchorPos{}, anchorDup(templateURL, AnchorGroups)
+	}
+	if countRP > 1 {
+		return anchorPos{}, anchorDup(templateURL, AnchorRuleProviders)
 	}
 	if countRS > 1 {
 		return anchorPos{}, anchorDup(templateURL, AnchorRulesets)
@@ -170,7 +190,7 @@ func findAndValidateAnchors(lines []string, target render.Target, templateURL st
 
 	// Clash YAML minimal check: anchor indent should not be 0.
 	if target == render.TargetClash {
-		if leadingWhitespace(lines[pos.proxiesLine]) == "" || leadingWhitespace(lines[pos.groupsLine]) == "" || leadingWhitespace(lines[pos.rulesLine]) == "" {
+		if leadingWhitespace(lines[pos.proxiesLine]) == "" || leadingWhitespace(lines[pos.groupsLine]) == "" || leadingWhitespace(lines[pos.ruleProvidersLine]) == "" || leadingWhitespace(lines[pos.rulesLine]) == "" {
 			return anchorPos{}, sectionError(templateURL, "Clash 模板锚点缩进不能为 0（应位于对应列表下方）")
 		}
 	}

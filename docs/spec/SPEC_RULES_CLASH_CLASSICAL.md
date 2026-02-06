@@ -1,27 +1,25 @@
 # Clash classical 规则规范（v1）
 
-本文档定义本项目支持的 **Clash classical 规则行** 子集，以及 ruleset 文件与 profile inline rule 的解析约束。
+本文档定义本项目支持的 **Clash classical 规则行** 子集（用于 profile inline rules 的解析），并给出推荐的 ruleset 文件内容写法（服务端不做校验）。
 
 核心目标：把“规则语法”锁死在一个地方（解析器），其余模块只处理结构化 `Rule` 列表。
 
 v1 只有一种行为（无额外参数开关）：
-- 任何规则语法不合法、字段数量不匹配、值无法解析等，必须直接返回 HTTP 错误（错误结构见 `SPEC_HTTP_API.md`）。
-- 当解析 **ruleset 文件** 时，遇到“不支持的规则类型（`UNSUPPORTED_RULE_TYPE`）”允许跳过该行继续处理（避免被第三方 ruleset 卡死）。
-- profile inline rule：不支持的类型必须报错（避免用户误写却静默降级）。
+- profile inline rule（`profile.rule`）：任何规则语法不合法、字段数量不匹配、值无法解析或规则类型不支持，必须直接返回 HTTP 错误（错误结构见 `SPEC_HTTP_API.md`）。
+- ruleset（`profile.ruleset` 指向的远程文件）：v1 默认不拉取、不解析，因此不会在服务端返回 ruleset 文件内部的语法错误（由客户端自行处理）。
 
 ---
 
 ## 1. 输入位置（哪里会用到这套规则）
 
-v1 有两种规则来源，统一使用本规范解析：
+v1 强制解析的位置：
 
-1) **ruleset 文件内容**（来自 profile 的 `ruleset: ["ACTION,URL"]`）
-- 文件按行解析为规则。
-- 允许规则行 **缺省 ACTION**（由 profile 的 `ruleset` 指令提供默认 ACTION）。
-
-2) **profile inline rule**（来自 profile 的 `rule: ["..."]`）
+1) **profile inline rule**（来自 profile 的 `rule: ["..."]`）
 - 每一条都必须是“完整规则行”（必须显式包含 ACTION）。
 - 最终规则必须包含兜底 `MATCH,<ACTION>`（该要求由 `SPEC_PROFILE_YAML.md` 约束）。
+
+推荐（非服务端强制）：
+- ruleset 远程文件内容建议使用同一套语法的常见子集（每行 `TYPE,VALUE`，通常缺省 ACTION），以便多 target 兼容。
 
 ---
 
@@ -209,7 +207,9 @@ MATCH,<action>
 约束（v1 强制）：
 - `MATCH` 不允许缺省 action。
 - `MATCH` 语义是兜底，最终规则中必须存在且应当在最后（顺序由 `SPEC_DETERMINISM.md` 约束）。
-- ruleset 文件中出现 `MATCH` 必须报错（避免在 ruleset 展开阶段提前“吞掉”后续规则，造成难以诊断的行为）。
+
+说明：
+- v1 推荐 ruleset 文件内容不要包含 `MATCH`（通常没有意义且容易引入误解），但服务端默认不做校验。
 
 ---
 
@@ -226,12 +226,9 @@ MATCH,<action>
 ## 6. 必须报错的情况（最小集合）
 
 - 规则行字段数量不匹配（例如 `DOMAIN,a` 出现在 inline rule；或 `MATCH,a,b`）
-- 不支持的 `TYPE`：
-  - ruleset 文件：跳过该行（`UNSUPPORTED_RULE_TYPE`）
-  - inline rule：必须报错
+- 不支持的 `TYPE`（inline rule 必须报错）
 - `no-resolve` 出现在非 `IP-CIDR` / `IP-CIDR6` 规则，或出现在错误的位置
 - `IP-CIDR` / `IP-CIDR6` 的 `<cidr>` 不是合法 CIDR
-- `MATCH` 出现在 ruleset 文件中
 - inline rule 场景下出现歧义写法：`IP-CIDR,<cidr>,no-resolve` 或 `IP-CIDR6,<cidr>,no-resolve`（缺 action；inline rule 必须显式 action）
 
-错误响应结构见 `SPEC_HTTP_API.md`；必须尽可能包含 `url/line/snippet/stage=parse_ruleset|compile`。
+错误响应结构见 `SPEC_HTTP_API.md`；必须尽可能包含 `url/line/snippet/stage=parse_profile|compile`。

@@ -9,6 +9,8 @@ proxies:
 proxy-groups:
   #@GROUPS@#
 
+rule-providers:
+  #@RULE_PROVIDERS@#
+
 rules:
   #@RULES@#
-

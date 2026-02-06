@@ -13,11 +13,13 @@ v1 约定支持以下锚点（`mode=config` 模板必需的最小集合见下）
 
 - `#@PROXIES@#`：节点列表注入点
 - `#@GROUPS@#`：策略组列表注入点
+- `#@RULE_PROVIDERS@#`：Clash `rule-providers` 注入点（仅 Clash 使用，见第 3 节）
 - `#@RULESETS@#`：远程 ruleset 列表注入点（仅 Quantumult X 使用，见第 6 节）
 - `#@RULES@#`：规则列表注入点
 
 锚点约束（v1 强制）：
 - `#@PROXIES@#` / `#@GROUPS@#` / `#@RULES@#`：必须出现且仅出现一次；缺失或重复都必须报错。
+- `#@RULE_PROVIDERS@#`：当 `target=clash` 时必须出现且仅出现一次；其它 target 出现该锚点视为模板错误。
 - `#@RULESETS@#`：当 `target=quanx` 时必须出现且仅出现一次；其它 target 出现该锚点视为模板错误。
 - 所有锚点必须 **独占一行**（该行除空白外不得包含其它字符）；否则必须报错。
 
@@ -30,6 +32,7 @@ v1 约定支持以下锚点（`mode=config` 模板必需的最小集合见下）
 - 生成文本块（均为“未缩进”文本，以 `\n` 分行）：
   - `proxiesBlock`
   - `groupsBlock`
+  - `ruleProvidersBlock`（可选：仅 `target=clash` 注入到 `rule-providers:` 下方）
   - `rulesBlock`
   - `rulesetsBlock`（可选：仅 `target=quanx` 注入到 `[filter_remote]`）
 
@@ -53,6 +56,8 @@ proxies:
   #@PROXIES@#
 proxy-groups:
   #@GROUPS@#
+rule-providers:
+  #@RULE_PROVIDERS@#
 rules:
   #@RULES@#
 ```
@@ -159,6 +164,7 @@ v1 强制要求锚点分别出现在以下 section 中（忽略大小写）：
 
 模板相关必须报错的情况：
 - 必需锚点（`#@PROXIES@#/#@GROUPS@#/#@RULES@#`）缺失/重复/不独占一行
+- `target=clash` 时必需锚点 `#@RULE_PROVIDERS@#` 缺失/重复/不独占一行
 - `target=quanx` 时必需锚点 `#@RULESETS@#` 缺失/重复/不独占一行
 - Shadowrocket 模板中锚点未出现在要求的 section 内
 - Surge 模板中锚点未出现在要求的 section 内

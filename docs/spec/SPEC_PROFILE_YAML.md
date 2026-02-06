@@ -89,14 +89,16 @@ ACTION,URL
 - `URL`：远程规则集 URL（http/https）
 
 语义：
-- `ruleset` 用于“远程规则集引用”（ACTION 绑定 + 顺序控制），不同 target 的展开策略不同：
-  - **Clash**：服务端会拉取 URL 内容并解析为规则列表，然后在最终规则输出中按 `ruleset` 的顺序展开插入。
-    - 规则集文件内部每行按“Clash classical 规则行”解析（见 `SPEC_RULES_CLASH_CLASSICAL.md`）。如果规则行缺省 ACTION，则使用该 `ruleset` 指令指定的 `ACTION` 作为默认值。
+- `ruleset` 用于“远程规则集引用”（ACTION 绑定 + 顺序控制），不同 target 的渲染策略不同：
+  - **Clash（mihomo）**：服务端不拉取/不解析 ruleset 内容，而是把每个 URL 渲染为一个 `rule-providers` 条目，并在 `rules:` 中输出：
+    - `RULE-SET,<PROVIDER_NAME>,<ACTION>`
+
+    其中 `<PROVIDER_NAME>` 必须从 URL **确定性**生成（同一 URL 在同一份输出内得到同一名字）；若出现重名，按出现顺序追加 `-2`、`-3`…
   - **Surge / Shadowrocket**：不展开 ruleset 内容；最终配置中输出远程引用行（例如 `RULE-SET,<URL>,<ACTION>`），由客户端自行拉取。
   - **Quantumult X**：不展开 ruleset 内容；最终配置中输出到 `[filter_remote]` 的远程引用行，并通过 `force-policy` 绑定策略组。
 
 约束（v1）：
-- 无论是否展开，`ACTION` 必须是 `DIRECT/REJECT` 或已定义的策略组名；否则必须报错（引用不存在）。
+- 无论 target 最终如何渲染（展开/引用；v1 默认不展开），`ACTION` 必须是 `DIRECT/REJECT` 或已定义的策略组名；否则必须报错（引用不存在）。
 
 ### 2.6 `rule`（可选，但强烈推荐）
 
@@ -179,12 +181,17 @@ custom_proxy_group:
 
 ## 4. 规则输入：Clash classical（统一语法）
 
-v1 将规则输入统一为 Clash classical 规则行：
-- profile 的 `rule`（inline rule）
-- profile 的 `ruleset` 拉取到的远程文件内容（ruleset file）
+v1 将 **inline rule**（profile 的 `rule`）统一解析为 Clash classical 规则行。
 
-完整的规则语法、支持的类型子集、ruleset 中 ACTION 缺省、以及必须报错的边界条件，统一定义在：
+`ruleset` 指向的远程文件内容在 v1 默认不由服务端解析（仅作为 URL 引用写入最终配置，由客户端自行拉取）。
+为了让同一份 profile 尽可能兼容多个客户端，v1 推荐 ruleset 文件内容使用 Clash classical list 常见写法（每行 `TYPE,VALUE`，通常不带 ACTION）。
+
+完整的规则语法、支持的类型子集、以及必须报错的边界条件，统一定义在：
 - `SPEC_RULES_CLASH_CLASSICAL.md`
+
+说明：
+- 本规范中的规则语法用于 profile 的 `rule`（inline rules）。
+- ruleset 远程文件内容也建议遵循该规则语法的常见子集，但 v1 默认不做服务端校验。
 
 ---
 

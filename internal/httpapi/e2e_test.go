@@ -26,10 +26,11 @@ func TestE2E_Materials_ConfigAndList(t *testing.T) {
 
 	// mode=config
 	{
-		wantClash := expectedClashConfig()
+		wantClash := expectedClashConfig(profileURL)
 		gotClash := doGET(t, mux, "/sub?mode=config&target=clash&sub="+url.QueryEscape(subURL)+"&profile="+url.QueryEscape(profileURL))
 		if gotClash != wantClash {
-			t.Fatalf("clash output mismatch\n--- got ---\n%s\n--- want ---\n%s", gotClash, wantClash)
+			i := firstDiff(gotClash, wantClash)
+			t.Fatalf("clash output mismatch (len got=%d want=%d firstDiff=%d)\n--- got ---\n%s\n--- want ---\n%s", len(gotClash), len(wantClash), i, gotClash, wantClash)
 		}
 		gotClashPOST := doPOSTJSON(t, mux, "/api/convert", map[string]any{
 			"mode":    "config",
@@ -234,7 +235,11 @@ func repoRoot(t *testing.T) string {
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "../.."))
 }
 
-func expectedClashConfig() string {
+func expectedClashConfig(profileURL string) string {
+	base := materialsBase(profileURL)
+	lan := base + "/materials/rulesets/LAN.list"
+	banad := base + "/materials/rulesets/BanAD.list"
+	proxy := base + "/materials/rulesets/Proxy.list"
 	return "" +
 		"mixed-port: 7890\n" +
 		"allow-lan: false\n" +
@@ -280,19 +285,31 @@ func expectedClashConfig() string {
 		"    interval: 300\n" +
 		"    tolerance: 50\n" +
 		"\n" +
+		"rule-providers:\n" +
+		"  LAN:\n" +
+		"    type: http\n" +
+		"    behavior: classical\n" +
+		"    url: \"" + lan + "\"\n" +
+		"    interval: 86400\n" +
+		"    format: text\n" +
+		"  BanAD:\n" +
+		"    type: http\n" +
+		"    behavior: classical\n" +
+		"    url: \"" + banad + "\"\n" +
+		"    interval: 86400\n" +
+		"    format: text\n" +
+		"  Proxy:\n" +
+		"    type: http\n" +
+		"    behavior: classical\n" +
+		"    url: \"" + proxy + "\"\n" +
+		"    interval: 86400\n" +
+		"    format: text\n" +
+		"\n" +
 		"rules:\n" +
-		"  - \"IP-CIDR,192.168.0.0/16,DIRECT\"\n" +
-		"  - \"IP-CIDR,10.0.0.0/8,DIRECT\"\n" +
-		"  - \"IP-CIDR,172.16.0.0/12,DIRECT\"\n" +
-		"  - \"DOMAIN-SUFFIX,local,DIRECT\"\n" +
-		"  - \"DOMAIN-SUFFIX,doubleclick.net,REJECT\"\n" +
-		"  - \"DOMAIN-SUFFIX,googlesyndication.com,REJECT\"\n" +
-		"  - \"DOMAIN-SUFFIX,adservice.google.com,REJECT\"\n" +
-		"  - \"DOMAIN-SUFFIX,google.com,PROXY\"\n" +
-		"  - \"DOMAIN-SUFFIX,github.com,PROXY\"\n" +
-		"  - \"DOMAIN-SUFFIX,youtube.com,PROXY\"\n" +
-		"  - \"MATCH,PROXY\"\n" +
-		"\n"
+		"  - \"RULE-SET,LAN,DIRECT\"\n" +
+		"  - \"RULE-SET,BanAD,REJECT\"\n" +
+		"  - \"RULE-SET,Proxy,PROXY\"\n" +
+		"  - \"MATCH,PROXY\"\n"
 }
 
 func expectedShadowrocketConfig(profileURL string) string {

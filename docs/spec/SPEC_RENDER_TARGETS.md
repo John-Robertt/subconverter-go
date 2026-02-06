@@ -6,7 +6,7 @@
 - 只覆盖 v1 承诺的最小能力集（SS 节点、`select/url-test` 策略组、Clash classical 规则）。
 - 目标差异通过“渲染阶段”吸收：同一份 profile 可以生成不同客户端配置（字段/段落语法不同）。
 - ruleset（`profile.ruleset`）对不同 target 的处理：
-  - Clash：展开 ruleset 文件内容为规则行（写入 `rulesBlock`）
+  - Clash（mihomo）：生成 `rule-providers`（每个 URL 一个 provider），并在 `rules:` 中输出 `RULE-SET,<PROVIDER_NAME>,<ACTION>`（不展开 ruleset 内容）
   - Surge/Shadowrocket：输出远程引用行 `RULE-SET,<URL>,<ACTION>`（不展开）
   - Quantumult X：输出远程引用行到 `[filter_remote]`（不展开）
 - 模板只提供骨架；服务端生成文本块并注入锚点（见《模板锚点与注入规范》）。
@@ -22,7 +22,10 @@
 - `Groups[]`：仅包含 `type=select|url-test`
 - `Rules[]`：仅包含 v1 规则类型（不同 target 支持矩阵不同）：  
   `DOMAIN/DOMAIN-SUFFIX/DOMAIN-KEYWORD/IP-CIDR/IP-CIDR6/GEOIP/PROCESS-NAME/URL-REGEX/MATCH`
-- `RulesetRefs[]`：profile 中 `ruleset` 的远程引用信息（`ACTION,URL`），用于输出“远程 ruleset 引用行”（不展开场景）。
+- `RulesetRefs[]`：profile 中 `ruleset` 的远程引用信息（`ACTION,URL`），用于输出“远程 ruleset 引用”（不展开内容）：
+  - Clash：渲染为 `rule-providers` + `RULE-SET,<PROVIDER_NAME>,<ACTION>`
+  - Surge/Shadowrocket：渲染为 `RULE-SET,<URL>,<ACTION>`
+  - Quantumult X：渲染为 `[filter_remote]` 的远程引用行
 
 并且应已满足《输出稳定性与规范化规范》：
 - 节点已去重、命名唯一、排序稳定
@@ -37,12 +40,16 @@
 - `groupsBlock`
 - `rulesBlock`
 
+并且当 `target=clash` 时，还必须额外生成一段：
+- `ruleProvidersBlock`（写入 `rule-providers:`）
+
 并且当 `target=quanx` 时，还必须额外生成一段：
 - `rulesetsBlock`（写入 `[filter_remote]`）
 
 然后交由模板注入器替换：
 - `#@PROXIES@#`
 - `#@GROUPS@#`
+- `#@RULE_PROVIDERS@#`（仅 Clash）
 - `#@RULESETS@#`（仅 QuanX）
 - `#@RULES@#`
 
@@ -95,7 +102,38 @@ v1 支持：
 - `interval`：秒（整数）
 - `tolerance`：毫秒（可选，整数）
 
-### 3.3 rulesBlock（YAML sequence of strings）
+### 3.3 ruleProvidersBlock（YAML mapping entries）
+
+当 profile 提供 `ruleset` 时（远程规则集 URL 列表），Clash 输出不展开 ruleset 内容，而是生成 `rule-providers:` 配置。
+
+每个 ruleset URL 必须生成一个 provider 条目（YAML mapping entry），字段最小集合（v1）：
+- `type: http`
+- `behavior: classical`
+- `url: "<RULESET_URL>"`
+- `interval: 86400`
+- `format: text`
+
+其中 `<PROVIDER_NAME>` 必须在同一份输出内唯一，并且要能用于规则引用 `RULE-SET,<PROVIDER_NAME>,...`。
+
+v1 建议的 provider 命名规则（确定性）：
+- 取 URL path 的 basename（去掉扩展名，例如 `Proxy.list` -> `Proxy`）
+- 将非 `[A-Za-z0-9_-]` 的字符替换为 `_`，并裁剪到合理长度
+- 若出现重名，按出现顺序追加后缀 `-2`、`-3`…
+
+当 profile 未提供任何 `ruleset` 时：
+- 为保持 YAML 语义正确，`ruleProvidersBlock` 必须输出一个空 map（例如 `{}`）。
+
+### 3.4 rulesBlock（YAML sequence of strings）
+
+Clash 的 `rules:` 输出包含两部分（顺序必须固定）：
+
+1) ruleset 引用行（按 profile.ruleset 顺序）：
+
+```
+RULE-SET,<PROVIDER_NAME>,<ACTION>
+```
+
+2) inline 规则（来自 profile.rule），格式为 Clash classical：
 
 每条规则输出为一个 YAML 字符串（list item），格式为 Clash classical：
 

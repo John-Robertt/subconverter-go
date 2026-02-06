@@ -4,7 +4,14 @@
 
 v1 约定：
 - profile inline rule（`profile.rule`）：语法不合法 / 不支持的规则类型 → 直接报错。
-- ruleset 文件（`profile.ruleset` 指向的远程文件）在需要展开时（目前仅 Clash 展开）：遇到“不支持的规则类型”允许跳过该行（`UNSUPPORTED_RULE_TYPE`），其余错误仍然必须返回 HTTP 错误（例如语法错误、CIDR 不合法、引用不存在等）。
+- ruleset（`profile.ruleset`）：v1 默认**不拉取、不解析**远程 ruleset 文件内容，仅做“引用/绑定/排序”：
+  - Clash（mihomo）：输出 `rule-providers` + `RULE-SET,<PROVIDER_NAME>,<ACTION>`
+  - Surge/Shadowrocket：输出 `RULE-SET,<URL>,<ACTION>`
+  - Quantumult X：输出到 `[filter_remote]` 的远程引用行
+
+因此：
+- ruleset 文件内部的语法错误不会在服务端提前暴露（由客户端在拉取/更新时自行报错）。
+- 服务端仍必须校验 `ruleset` 指令本身的语法，并校验 `ACTION` 引用必须存在（组名/DIRECT/REJECT）。
 
 ---
 
@@ -37,7 +44,7 @@ v1 约定：
 
 行为：
 - `mode=list`：只拉取/解析订阅，输出 ss:// 节点列表（`encode` 控制是否 base64）。
-- `mode=config`：拉取/解析订阅 + 拉取/解析 profile + 拉取模板 + （对 Clash）拉取 ruleset 并展开，编译后输出目标配置文件。
+- `mode=config`：拉取/解析订阅 + 拉取/解析 profile + 拉取模板，编译后输出目标配置文件（v1 默认不拉取、不展开 ruleset 内容）。
   - 若 `target=surge`，服务端必须确保输出的第一个非空行是当前请求对应的 `#!MANAGED-CONFIG <URL> ...`（用于 Surge 定时更新）。
     - `<URL>` 的 base URL 若 profile 提供 `public_base_url`，必须使用该字段（见《Profile YAML 规范》）。
   - 服务端应设置 `Content-Disposition`（attachment）。若提供 `fileName`，则使用它作为文件名（并按 target/mode 自动补扩展名）；若缺省则使用默认文件名。

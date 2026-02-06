@@ -147,6 +147,8 @@ func TestInjectAnchors_ClashAnchorIndentZero(t *testing.T) {
 		"#@PROXIES@#\n" +
 		"proxy-groups:\n" +
 		"  #@GROUPS@#\n" +
+		"rule-providers:\n" +
+		"  #@RULE_PROVIDERS@#\n" +
 		"rules:\n" +
 		"  #@RULES@#\n"
 

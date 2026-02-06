@@ -81,9 +81,10 @@ func runConvert(ctx context.Context, r *http.Request, req convertRequest) (strin
 			return "", err
 		}
 
-		expandRulesets := req.Target == render.TargetClash
 		res, err := compiler.Compile(ctx, subs, prof, compiler.Options{
-			ExpandRulesets: expandRulesets,
+			// v1: Clash uses rule-providers (RULE-SET) instead of expanding rulesets
+			// into massive inline rules.
+			ExpandRulesets: false,
 		})
 		if err != nil {
 			return "", err

@@ -19,6 +19,7 @@ const (
 type Blocks struct {
 	Proxies string
 	Groups  string
+	RuleProviders string // optional: used by Clash rule-providers
 	Rulesets string // optional: used by targets that support remote ruleset sections (e.g. QuanX)
 	Rules   string
 }
