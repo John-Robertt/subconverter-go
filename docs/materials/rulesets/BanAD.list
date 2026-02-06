@@ -1,0 +1,5 @@
+# Ad domains (no action in line; default ACTION from profile ruleset will be applied)
+DOMAIN-SUFFIX,doubleclick.net
+DOMAIN-SUFFIX,googlesyndication.com
+DOMAIN-SUFFIX,adservice.google.com
+
