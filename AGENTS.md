@@ -51,8 +51,6 @@ Use Chinese for all communication and documentation.
 
 ### Reliability Tools (Prioritize Use)
 
-The current project is a Vue 2 + Vite architecture.
-
 Having grep (GitHub code search) and context7 (official documentation search) tools can greatly enhance the reliability
 of your code. Before starting to code, you must use context7 to search and verify the documentation, rather than relying
 on your memory.

@@ -19,7 +19,7 @@
   - `Proxy`：`Name, Type, Server, Port, Cipher, Password, Plugin, PluginOpts, UDP, TFO ...`
   - `Group`：`Name, Type, Members[] | Regex/URL/Interval/Tolerance ...`
   - `Rule`：`Type, Value, Action, NoResolve`
-  - `AppError`：与 `SPEC_HTTP_API.md` 对齐的结构化错误（`code/message/stage/url/line/snippet/hint`）
+  - `AppError`：与 `../spec/SPEC_HTTP_API.md` 对齐的结构化错误（`code/message/stage/url/line/snippet/hint`）
 
 实现层的所有模块都只做两件事：
 1) 把文本解析为这些结构体  
@@ -39,34 +39,34 @@
   - 统一错误输出（JSON）与成功输出（text/plain）
 
 - `internal/fetch`
-  - 仅做 http/https 拉取（超时/大小上限/重定向/UTF-8 校验），完全按 `SPEC_FETCH.md`
+  - 仅做 http/https 拉取（超时/大小上限/重定向/UTF-8 校验），完全按 `../spec/SPEC_FETCH.md`
   - （实现建议）对相同 URL 的并发请求 singleflight 去重
 
 - `internal/sub/ss`
   - SS 订阅解析：raw/b64 自动识别、ss:// 两种形态、plugin query 处理
-  - 只产出 `[]model.Proxy`，按 `SPEC_SUBSCRIPTION_SS.md`
+  - 只产出 `[]model.Proxy`，按 `../spec/SPEC_SUBSCRIPTION_SS.md`
 
 - `internal/profile`
   - profile YAML 解析与校验（`version/template/public_base_url/custom_proxy_group/ruleset/rule`）
-  - 只产出一个“ProfileSpec”结构体（可以放在 `internal/profile` 包内），按 `SPEC_PROFILE_YAML.md`
+  - 只产出一个“ProfileSpec”结构体（可以放在 `internal/profile` 包内），按 `../spec/SPEC_PROFILE_YAML.md`
 
 - `internal/rules`
   - Clash classical 规则解析器（行 -> `model.Rule`）
-  - ruleset 文件解析（支持缺省 ACTION），按 `SPEC_RULES_CLASH_CLASSICAL.md`
+  - ruleset 文件解析（支持缺省 ACTION），按 `../spec/SPEC_RULES_CLASH_CLASSICAL.md`
 
 - `internal/compiler`
   - 把 `ProfileSpec + []Proxy` 编译为最终 IR：`[]Proxy + []Group + []Rule`
   - 负责：去重/命名冲突处理/排序/`@all` 展开/引用校验/兜底 MATCH 校验
-  - 行为按 `SPEC_DETERMINISM.md` 与 `SPEC_PROFILE_YAML.md`
+  - 行为按 `../spec/SPEC_DETERMINISM.md` 与 `../spec/SPEC_PROFILE_YAML.md`
 
 - `internal/render`
   - 目标渲染：把 IR 渲染为三段文本块（proxies/groups/rules）
   - 可按 target 分子包：`internal/render/clash`、`internal/render/surge`、`internal/render/shadowrocket`
-  - 行为按 `SPEC_RENDER_TARGETS.md`
+  - 行为按 `../spec/SPEC_RENDER_TARGETS.md`
 
 - `internal/template`
   - 模板锚点校验、section 校验（Surge/Shadowrocket）、缩进继承注入
-  - Surge `#!MANAGED-CONFIG` 的插入/重写（URL 生成由编译器或专门函数完成，但规则按 `SPEC_TEMPLATE_ANCHORS.md`）
+  - Surge `#!MANAGED-CONFIG` 的插入/重写（URL 生成由编译器或专门函数完成，但规则按 `../spec/SPEC_TEMPLATE_ANCHORS.md`）
 
 ---
 
@@ -92,6 +92,5 @@ v1 的正确扩展方式：
   - `internal/template`：覆盖锚点缺失/重复/不独占、section 错误、缩进继承
 
 - 端到端 golden test：
-  - 直接复用 `docs/materials/`（见 `docs/materials/README.md`）
+  - 直接复用 `../materials/`（见 `../materials/README.md`）
   - 固定输入 -> 断言输出字节级一致（尤其是 `#!MANAGED-CONFIG` URL 序列化与排序规则）
-

@@ -4,7 +4,7 @@
 1) **这个项目的目标/边界是什么**（做什么、不做什么）。  
 2) **围绕目标做出的关键架构约束**（保证简单、可验证、可扩展）。  
 
-字段/语法/行为的“可执行规范”放在 `docs/` 下的 `SPEC_*.md`；实现侧的最小目录拆分建议见 `DESIGN_CODE_LAYOUT.md`（都在 `docs/README.md` 汇总）。
+字段/语法/行为的“可执行规范”放在 `../spec/` 下的 `SPEC_*.md`；实现侧的最小目录拆分建议见 `DESIGN_CODE_LAYOUT.md`（都在 `../README.md` 汇总）。
 
 ---
 
@@ -120,7 +120,7 @@ v1 优先支持：
 - 服务默认仅监听 `127.0.0.1`（需要显式配置才允许对外暴露）。
 - 若对外暴露，必须提供简单鉴权（例如 token），否则此服务可被滥用为内网探测器。
 
-更细的安全策略与默认运行姿势见《安全与内网访问规范》：`SPEC_SECURITY.md`。
+更细的安全策略与默认运行姿势见《安全与内网访问规范》：`../spec/SPEC_SECURITY.md`。
 
 ---
 
@@ -140,13 +140,13 @@ v1 优先支持：
 
 如果你要“实现这个编译器”，建议按下面顺序读（由外到内）：
 - 入口与边界：`ARCHITECTURE.md`
-- 对外接口：`SPEC_HTTP_API.md`
-- 远程拉取：`SPEC_FETCH.md`
-- 输入解析：`SPEC_SUBSCRIPTION_SS.md`
-- profile（编译指令）：`SPEC_PROFILE_YAML.md`
-- 规则语法（统一输入）：`SPEC_RULES_CLASH_CLASSICAL.md`
-- 编译稳定性（去重/命名/排序/managed-config URL 序列化）：`SPEC_DETERMINISM.md`
-- 渲染到各 target：`SPEC_RENDER_TARGETS.md`
-- 模板注入与锚点约束（含 Surge managed-config 重写/插入）：`SPEC_TEMPLATE_ANCHORS.md`
-- 安全与内网访问：`SPEC_SECURITY.md`
+- 对外接口：`../spec/SPEC_HTTP_API.md`
+- 远程拉取：`../spec/SPEC_FETCH.md`
+- 输入解析：`../spec/SPEC_SUBSCRIPTION_SS.md`
+- profile（编译指令）：`../spec/SPEC_PROFILE_YAML.md`
+- 规则语法（统一输入）：`../spec/SPEC_RULES_CLASH_CLASSICAL.md`
+- 编译稳定性（去重/命名/排序/managed-config URL 序列化）：`../spec/SPEC_DETERMINISM.md`
+- 渲染到各 target：`../spec/SPEC_RENDER_TARGETS.md`
+- 模板注入与锚点约束（含 Surge managed-config 重写/插入）：`../spec/SPEC_TEMPLATE_ANCHORS.md`
+- 安全与内网访问：`../spec/SPEC_SECURITY.md`
 - 代码目录与模块职责（最小实现拆分建议）：`DESIGN_CODE_LAYOUT.md`

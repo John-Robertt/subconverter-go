@@ -22,10 +22,10 @@
 - 缺点：对用户输入质量要求更高；需要更好的错误信息。
 
 相关规范：
-- `SPEC_HTTP_API.md`
-- `SPEC_SUBSCRIPTION_SS.md`
-- `SPEC_PROFILE_YAML.md`
-- `SPEC_RULES_CLASH_CLASSICAL.md`
+- `../spec/SPEC_HTTP_API.md`
+- `../spec/SPEC_SUBSCRIPTION_SS.md`
+- `../spec/SPEC_PROFILE_YAML.md`
+- `../spec/SPEC_RULES_CLASH_CLASSICAL.md`
 
 ---
 
@@ -43,9 +43,9 @@
 - 缺点：某些客户端特性需要通过模板预置，不能由 profile 动态描述。
 
 相关规范：
-- `ARCHITECTURE.md`
-- `SPEC_TEMPLATE_ANCHORS.md`
-- `SPEC_RENDER_TARGETS.md`
+- `../design/ARCHITECTURE.md`
+- `../spec/SPEC_TEMPLATE_ANCHORS.md`
+- `../spec/SPEC_RENDER_TARGETS.md`
 
 ---
 
@@ -63,9 +63,9 @@
 - 缺点：必须明确子集边界；不支持的规则类型直接报错。
 
 相关规范：
-- `SPEC_RULES_CLASH_CLASSICAL.md`
-- `SPEC_PROFILE_YAML.md`
-- `SPEC_RENDER_TARGETS.md`
+- `../spec/SPEC_RULES_CLASH_CLASSICAL.md`
+- `../spec/SPEC_PROFILE_YAML.md`
+- `../spec/SPEC_RENDER_TARGETS.md`
 
 ---
 
@@ -82,6 +82,5 @@
 - 缺点：若误对公网开放，天然具备 SSRF 能力。
 
 相关规范：
-- `SPEC_FETCH.md`
-- `SPEC_SECURITY.md`
-
+- `../spec/SPEC_FETCH.md`
+- `../spec/SPEC_SECURITY.md`

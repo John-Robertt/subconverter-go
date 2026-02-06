@@ -8,16 +8,16 @@
 
 ## 1. 文档分层（别把“规范/设计/计划”混在一起）
 
-本仓库的 `docs/` 约定三类文档：
+本仓库的 `docs/` 约定三类文档（也体现在目录结构上）：
 
-1) **规范（SPEC_*.md）**：定义“必须满足的外部可观察行为（what）”  
+1) **规范（`docs/spec/SPEC_*.md`）**：定义“必须满足的外部可观察行为（what）”  
    - 例如：HTTP 的状态码/错误结构、SS 解析规则、规则语法、模板锚点、输出稳定性。
    - 规范是验收基准：写代码必须对齐规范，测试必须覆盖规范。
 
-2) **设计（DESIGN_*.md / ARCHITECTURE.md）**：解释“为什么这样做、最小拆分如何落地（why/how）”  
+2) **设计（`docs/design/*.md`）**：解释“为什么这样做、最小拆分如何落地（why/how）”  
    - 例如：为什么 IR 只包含 Proxy/Group/Rule、如何拆成包、流水线阶段如何串联。
 
-3) **开发与验证（本文）**：定义“按什么阶段交付、每阶段怎么验证（when/verify）”  
+3) **开发与验证（`docs/dev/*.md`）**：定义“按什么阶段交付、每阶段怎么验证（when/verify）”  
    - 不定义新行为，只引用 SPEC 作为验收标准。
 
 ---
@@ -29,7 +29,7 @@
 ### 阶段 0：项目骨架与统一错误类型
 
 范围：
-- 建立 Go module、最小 server、统一错误结构（对齐 `SPEC_HTTP_API.md`）。
+- 建立 Go module、最小 server、统一错误结构（对齐 `../spec/SPEC_HTTP_API.md`）。
 
 DoD：
 - `go test ./...` 能跑（即便测试数量很少）。
@@ -38,8 +38,8 @@ DoD：
 ### 阶段 1：Fetch（先把“远程不可靠”问题收敛）
 
 规范：
-- `SPEC_FETCH.md`
-- `SPEC_HTTP_API.md`（错误码/阶段字段）
+- `../spec/SPEC_FETCH.md`
+- `../spec/SPEC_HTTP_API.md`（错误码/阶段字段）
 
 DoD（必须测出来）：
 - 仅允许 http/https；其它 scheme 返回 `400 INVALID_ARGUMENT`
@@ -53,7 +53,7 @@ DoD（必须测出来）：
 ### 阶段 2：SS 订阅解析（只做“解析”，不做“修复”）
 
 规范：
-- `SPEC_SUBSCRIPTION_SS.md`
+- `../spec/SPEC_SUBSCRIPTION_SS.md`
 
 DoD：
 - raw/b64 自动识别可复现
@@ -66,7 +66,7 @@ DoD：
 ### 阶段 3：规则解析（把“规则语法”锁死）
 
 规范：
-- `SPEC_RULES_CLASH_CLASSICAL.md`
+- `../spec/SPEC_RULES_CLASH_CLASSICAL.md`
 
 DoD：
 - ruleset 文件允许缺省 ACTION（由 `ruleset: ACTION,URL` 补齐）
@@ -79,7 +79,7 @@ DoD：
 ### 阶段 4：Profile 解析
 
 规范：
-- `SPEC_PROFILE_YAML.md`
+- `../spec/SPEC_PROFILE_YAML.md`
 
 DoD：
 - `version/template/public_base_url/custom_proxy_group/ruleset/rule` 完整解析与最小校验
@@ -91,8 +91,8 @@ DoD：
 ### 阶段 5：编译器（determinism + 语义校验）
 
 规范：
-- `SPEC_DETERMINISM.md`
-- `SPEC_PROFILE_YAML.md`（兜底 MATCH 要求）
+- `../spec/SPEC_DETERMINISM.md`
+- `../spec/SPEC_PROFILE_YAML.md`（兜底 MATCH 要求）
 
 DoD：
 - 订阅合并顺序、去重 key、命名冲突后缀、排序规则都按规范
@@ -107,7 +107,7 @@ DoD：
 ### 阶段 6：渲染器（先输出三段 block，不碰模板）
 
 规范：
-- `SPEC_RENDER_TARGETS.md`
+- `../spec/SPEC_RENDER_TARGETS.md`
 
 DoD：
 - 能从 IR 生成 `proxiesBlock/groupsBlock/rulesBlock`
@@ -120,8 +120,8 @@ DoD：
 ### 阶段 7：模板注入（锚点/section/managed-config）
 
 规范：
-- `SPEC_TEMPLATE_ANCHORS.md`
-- `SPEC_DETERMINISM.md`（managed-config URL 序列化）
+- `../spec/SPEC_TEMPLATE_ANCHORS.md`
+- `../spec/SPEC_DETERMINISM.md`（managed-config URL 序列化）
 
 DoD：
 - 锚点缺失/重复/不独占一行都报错
@@ -132,7 +132,7 @@ DoD：
 ### 阶段 8：HTTP API（端到端串起来）
 
 规范：
-- `SPEC_HTTP_API.md`
+- `../spec/SPEC_HTTP_API.md`
 
 DoD：
 - GET `/sub` 与 POST `/api/convert` 行为一致
@@ -142,10 +142,10 @@ DoD：
 ### 阶段 9：端到端 golden tests（用 materials 做总验收）
 
 规范：
-- `docs/materials/README.md`
+- `../materials/README.md`
 
 DoD：
-- 使用 `docs/materials/` 的 profile/template/ruleset/subscription，三种 target 都能生成稳定输出
+- 使用 `../materials/` 的 profile/template/ruleset/subscription，三种 target 都能生成稳定输出
 - 关键边界：Surge managed-config URL 必须按规范序列化（GET/POST 等价）
 
 ---
@@ -158,7 +158,7 @@ DoD：
 3) **补/改测试**（单测或 golden）证明变更是刻意的、可验证的  
 
 建议维护一个“决策记录”（为什么这样做、有哪些替代、取舍是什么）：
-- `DECISIONS.md`
+- `DECISIONS.md`（同目录）
 
 ---
 
@@ -167,4 +167,3 @@ DoD：
 - 严格模式：不引入“容错猜测”（遇到问题直接报错，用户修远程文件）
 - 数据结构优先：IR 只表达 Proxy/Group/Rule，不把全局配置塞进 IR
 - 输出可复现：稳定性规则必须可测（不是“看起来差不多”）
-
