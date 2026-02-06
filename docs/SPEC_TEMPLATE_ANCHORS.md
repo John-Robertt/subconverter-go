@@ -57,7 +57,7 @@ rules:
 - 注入块内部每行应是合法 YAML 列表项（例如 `- {name: ..., type: ss, ...}` 或 `- DOMAIN-SUFFIX,example.com,PROXY`）。
 
 常见错误（必须报错）：
-- 锚点不在对应 key 下方的列表区域（会导致输出 YAML 语义错误）。v1 可先不做“结构理解”，但至少要求锚点缩进不是 0（减少明显误用）；更严的结构校验放在实现文档中定义。
+- 锚点不在对应 key 下方的列表区域（会导致输出 YAML 语义错误）。v1 不做 YAML 结构理解，但必须做最小文本校验：锚点行缩进必须大于 0（减少明显误用），其余由用户模板自行保证。
 
 ---
 
@@ -109,6 +109,9 @@ Surge 支持在配置文件顶部添加一行 managed config 指令，用于客�
 ```
 #!MANAGED-CONFIG <CURRENT_CONVERT_URL> interval=86400 strict=false
 ```
+
+说明：
+- 这里的 `strict=...` 是 Surge “managed config”指令自身的行为开关（是否以严格方式处理更新），与本服务“严格模式（遇错直接 HTTP 返回错误）”不是一回事。
 
 其中 `<CURRENT_CONVERT_URL>` 是“当前请求对应的订阅转换链接”，通常等价于本次请求的 `GET /sub?...` URL（需要包含 `mode=config&target=surge` 以及订阅/profile 等参数）。
 `<CURRENT_CONVERT_URL>` 的稳定生成规则见《输出稳定性与规范化规范》；当 profile 提供 `public_base_url` 时必须使用它作为 base URL。

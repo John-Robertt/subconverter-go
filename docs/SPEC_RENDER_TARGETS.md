@@ -7,7 +7,7 @@
 - 任何无法表达/不支持的能力必须报错（严格模式）。
 - 模板只提供骨架；服务端只生成三段文本并注入锚点（见《模板锚点与注入规范》）。
 
-本规范参考了 `/Users/yin/Desktop/subconverter-go/subconverter`（C 版本）的主流格式行为，但这里定义的是“可实现且稳定的子集”，不是照搬其全部细节/兼容性分支。
+本规范参考了本仓库内的 `subconverter/`（C 版本）的主流格式行为，但这里定义的是“可实现且稳定的子集”，不是照搬其全部细节/兼容性分支。
 
 ---
 
@@ -186,4 +186,3 @@ v1 规定 Shadowrocket 的渲染语法与 Surge 相同（使用 `[Proxy]` / `[Pr
 差异点：
 - 不要求输出 `#!MANAGED-CONFIG`（Shadowrocket 订阅更新机制与 Surge 不同）。
 - 其余 proxies/groups/rules 的行语法与名称约束与 Surge 相同。
-

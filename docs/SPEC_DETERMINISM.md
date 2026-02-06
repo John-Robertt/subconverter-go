@@ -121,8 +121,30 @@ v1 需要去重以避免重复节点污染策略组与 UI。去重必须确定�
 
 当 `mode=list` 输出纯节点列表时：
 - 节点列表顺序：按 5.1 规则排序（最终 Name 升序）。
-- 每行输出一条 canonical 的 `ss://` URI（具体 URI 规范由实现文档定义；v1 推荐使用 url-safe base64 且不含 padding，避免 `/` 破坏 URI 解析）。
-- 当 `encode=base64`：对“raw 列表文本（LF 分行，末尾带一个 `\n`）”做 base64 编码输出；不得换行折行。
+- raw（明文）输出：每行输出一条 canonical 的 `ss://` URI；使用 `\n` 分行，并且 **末尾必须带一个 `\n`**（便于 base64 输出稳定）。
+- 当 `encode=base64`：对“raw 列表文本（UTF-8 字节序列）”做 **标准 base64** 编码输出；不得换行折行。
+
+### 6.1 canonical `ss://` 行（v1）
+
+v1 统一输出为 SIP002 常见形态（userinfo-base64）：
+
+```
+ss://<B64URL(method:password)>@<host>:<port>[/?plugin=<PCT_ENCODED(plugin)>][#<PCT_ENCODED(name)>]
+```
+
+规则：
+- `<B64URL(method:password)>`：
+  - 明文为 `cipher:password`（均使用规范化后的字段；cipher 小写）。
+  - 使用 **URL-safe base64** 编码（RFC 4648 “base64url”字母表），并且 **去掉 padding `=`**。
+- `<host>`/`<port>`：使用规范化后的 `server` 与 `port`；IPv6 必须写为 `[ipv6]`。
+- `plugin`：
+  - 若该节点存在 plugin（订阅 query 参数 `plugin`），必须输出 `/?plugin=...`。
+  - `plugin` 值使用 UTF-8 百分号编码（RFC 3986），空格必须编码为 `%20`（不得用 `+`）。
+  - v1 不对 plugin 内容做重排/规范化；按解析阶段得到的值原样输出（仅去首尾空白）。
+- `name`：
+  - 使用最终节点名（经过去重/命名冲突处理后的 `Name`）。
+  - 使用 UTF-8 百分号编码（同上）。
+  - 若 name 为空，可省略 `#...`。
 
 ---
 

@@ -89,14 +89,14 @@ ACTION,URL
 
 语义：
 - 服务端会拉取 URL 内容并解析为规则列表，然后在最终规则输出中按 `ruleset` 的顺序展开插入。
-- 规则集文件内部每行按“Clash classical 规则行”解析（见第 4 节）。如果规则行缺省 ACTION，则使用该 `ruleset` 指令指定的 `ACTION` 作为默认值。
+- 规则集文件内部每行按“Clash classical 规则行”解析（见 `SPEC_RULES_CLASH_CLASSICAL.md`）。如果规则行缺省 ACTION，则使用该 `ruleset` 指令指定的 `ACTION` 作为默认值。
 
 ### 2.6 `rule`（可选，但强烈推荐）
 
 - 类型：list[string]
 - 语义：追加 inline 规则（按顺序）。
 
-每一项的语法：Clash classical 规则行（见第 4 节）。
+每一项的语法：Clash classical 规则行（见 `SPEC_RULES_CLASH_CLASSICAL.md`）。
 
 约束（v1 强制）：
 - 最终规则列表必须包含兜底规则（`MATCH,<ACTION>`）。如果 profile 没有提供，服务端必须返回错误（避免生成“无兜底”的配置）。
@@ -159,37 +159,14 @@ custom_proxy_group:
 
 ---
 
-## 4. 规则解析规范：Clash classical
+## 4. 规则输入：Clash classical（统一语法）
 
-本项目将规则输入统一为 Clash classical 规则行，并在服务端解析为 Core IR。
+v1 将规则输入统一为 Clash classical 规则行：
+- profile 的 `rule`（inline rule）
+- profile 的 `ruleset` 拉取到的远程文件内容（ruleset file）
 
-### 4.1 规则行通用约定
-
-- 以 `#` 开头的行是注释，忽略。
-- 空行忽略。
-- 其它行必须严格匹配支持的规则语法，否则错误。
-
-### 4.2 支持的规则类型（v1）
-
-v1 最小支持集：
-- `DOMAIN,domain,action`
-- `DOMAIN-SUFFIX,suffix,action`
-- `DOMAIN-KEYWORD,keyword,action`
-- `IP-CIDR,cidr,action[,no-resolve]`
-- `GEOIP,cc,action`（可选；若实现阶段未做则此类规则应报错而非忽略）
-- `MATCH,action`（兜底）
-
-说明：
-- `action` 可以是：`DIRECT`、`REJECT`、或任意策略组名。
-- `no-resolve` 仅对 `IP-CIDR` 有意义；出现其它位置即错误。
-
-### 4.3 ruleset 文件中的 ACTION 缺省
-
-当规则来自 `ruleset: ["ACTION,URL"]` 并拉取 URL 内容时：
-- 若规则行包含 action，则使用规则行的 action。
-- 若规则行不包含 action（例如 `DOMAIN-SUFFIX,google.com`），则使用 ruleset 指令里的默认 `ACTION`。
-
-若两者都缺（不可能，ruleset 指令必须给 ACTION），则错误。
+完整的规则语法、支持的类型子集、ruleset 中 ACTION 缺省、以及必须报错的边界条件，统一定义在：
+- `SPEC_RULES_CLASH_CLASSICAL.md`
 
 ---
 

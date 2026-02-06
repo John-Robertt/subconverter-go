@@ -4,7 +4,7 @@
 1) **这个项目的目标/边界是什么**（做什么、不做什么）。  
 2) **围绕目标做出的关键架构约束**（保证简单、可验证、可扩展）。  
 
-“如何拆分到具体模块/目录、如何实现细节、字段/语法完整规范”将落到后续独立文档中。
+字段/语法/行为的“可执行规范”放在 `docs/` 下的 `SPEC_*.md`；实现侧的最小目录拆分建议见 `DESIGN_CODE_LAYOUT.md`（都在 `docs/README.md` 汇总）。
 
 ---
 
@@ -114,11 +114,13 @@ v1 优先支持：
 
 ### 5.2 允许内网 URL（用户已选择）
 
+本项目需要支持访问内网资源（订阅/profile/template/ruleset 均允许为内网 URL）。
+
 允许内网意味着 SSRF 风险上升。为避免默认踩雷，建议运行默认值：
 - 服务默认仅监听 `127.0.0.1`（需要显式配置才允许对外暴露）。
 - 若对外暴露，必须提供简单鉴权（例如 token），否则此服务可被滥用为内网探测器。
 
-（更细的安全策略与实现细节放到独立文档。）
+更细的安全策略与默认运行姿势见《安全与内网访问规范》：`SPEC_SECURITY.md`。
 
 ---
 
@@ -134,15 +136,17 @@ v1 优先支持：
 
 ---
 
-## 7. 后续文档拆分（To be documented）
+## 7. 规范文档地图（v1）
 
-以下内容不在本架构文档展开，后续分别落地为独立规范/设计文档：
-- Profile YAML 规范（字段、语法、示例、错误码）：`SPEC_PROFILE_YAML.md`
-- 模板锚点规范（锚点、缩进规则、Shadowrocket/Clash 模板约束）：`SPEC_TEMPLATE_ANCHORS.md`
-- 规则集规范（Clash classical 支持范围、ACTION 缺省策略、注释/空行规则）
-- HTTP API 规范（参数、返回、错误结构、content-type、缓存语义）：`SPEC_HTTP_API.md`
-- 渲染规范（Clash/Surge/Shadowrocket 语法映射与约束）：`SPEC_RENDER_TARGETS.md`
-- SS 订阅解析规范（编码识别、URI 支持范围、错误定位）：`SPEC_SUBSCRIPTION_SS.md`
-- 输出稳定性与规范化规范（去重、命名、排序、稳定 URL 生成）：`SPEC_DETERMINISM.md`
-- 远程拉取（Fetch）规范（超时/大小上限/重定向/错误分类）：`SPEC_FETCH.md`
-- 安全策略（允许内网前提下的默认监听、鉴权建议、风险告知）
+如果你要“实现这个编译器”，建议按下面顺序读（由外到内）：
+- 入口与边界：`ARCHITECTURE.md`
+- 对外接口：`SPEC_HTTP_API.md`
+- 远程拉取：`SPEC_FETCH.md`
+- 输入解析：`SPEC_SUBSCRIPTION_SS.md`
+- profile（编译指令）：`SPEC_PROFILE_YAML.md`
+- 规则语法（统一输入）：`SPEC_RULES_CLASH_CLASSICAL.md`
+- 编译稳定性（去重/命名/排序/managed-config URL 序列化）：`SPEC_DETERMINISM.md`
+- 渲染到各 target：`SPEC_RENDER_TARGETS.md`
+- 模板注入与锚点约束（含 Surge managed-config 重写/插入）：`SPEC_TEMPLATE_ANCHORS.md`
+- 安全与内网访问：`SPEC_SECURITY.md`
+- 代码目录与模块职责（最小实现拆分建议）：`DESIGN_CODE_LAYOUT.md`
