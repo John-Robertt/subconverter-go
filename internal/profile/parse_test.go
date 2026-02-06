@@ -166,6 +166,38 @@ rule:
 	}
 }
 
+func TestParseProfileYAML_SelectRegex_OK(t *testing.T) {
+	yml := `
+version: 1
+template:
+  clash: "https://example.com/base.yaml"
+custom_proxy_group:
+  - "HK` + "`" + `select` + "`" + `(HK|Hong Kong)"
+rule:
+  - "MATCH,DIRECT"
+`
+	p, err := ParseProfileYAML("https://example.com/profile.yaml", yml, "clash")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(p.Groups) != 1 {
+		t.Fatalf("groups=%d, want=1", len(p.Groups))
+	}
+	g := p.Groups[0]
+	if g.Type != "select" {
+		t.Fatalf("group type=%q, want=%q", g.Type, "select")
+	}
+	if len(g.Members) != 0 {
+		t.Fatalf("group members=%v, want empty", g.Members)
+	}
+	if g.Regex == nil || g.RegexRaw == "" {
+		t.Fatalf("group regex missing: %+v", g)
+	}
+	if !g.Regex.MatchString("Hong Kong 01") {
+		t.Fatalf("regex should match, got %q", g.RegexRaw)
+	}
+}
+
 func TestParseProfileYAML_MissingMatchRule(t *testing.T) {
 	yml := `
 version: 1

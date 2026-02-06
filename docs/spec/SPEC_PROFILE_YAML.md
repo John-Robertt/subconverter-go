@@ -116,10 +116,18 @@ v1 仅支持以下两种组类型：`select`、`url-test`。
 
 ### 3.1 `select` 组
 
-语法：
+语法（两种写法，二选一）：
+
+1) 显式成员列表（推荐：可读性更强）：
 
 ```
 <GROUP_NAME>`select`[]<MEMBER_1>[]<MEMBER_2>...
+```
+
+2) 正则筛选节点（兼容常见 Rules.ini 写法）：
+
+```
+<GROUP_NAME>`select`<REGEX>
 ```
 
 说明：
@@ -128,15 +136,18 @@ v1 仅支持以下两种组类型：`select`、`url-test`。
   - 其他组名（引用必须存在，否则错误）
   - 内置 action：`DIRECT`、`REJECT`
   - 特殊 token：`@all`（表示“所有订阅节点”，由编译器在编译阶段展开）
+- `<REGEX>`：Go RE2 正则；用于从订阅节点的 `Proxy.Name` 中筛选成员（仅节点，不包含其它策略组与 DIRECT/REJECT）。
 
 约束：
 - 至少要有 1 个成员（`[]...`）。
+- 使用 `<REGEX>` 写法时，筛选结果不能为空（否则错误；避免生成“空组”）。
 
 示例：
 
 ```yaml
 custom_proxy_group:
   - "PROXY`select`[]@all[]DIRECT"
+  - "🇭🇰 Hong Kong`select`(港|HK|Hong Kong)"
 ```
 
 ### 3.2 `url-test` 组

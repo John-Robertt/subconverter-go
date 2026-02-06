@@ -108,3 +108,35 @@ func TestCompile_URLTestEmpty(t *testing.T) {
 		t.Fatalf("code=%q, want=%q", ce.AppError.Code, "GROUP_PARSE_ERROR")
 	}
 }
+
+func TestCompile_SelectRegexMembers(t *testing.T) {
+	subs := []model.Proxy{
+		{Type: "ss", Name: "HK-A", Server: "hk.example.com", Port: 1, Cipher: "aes-128-gcm", Password: "pass"},
+		{Type: "ss", Name: "HK-B", Server: "hk2.example.com", Port: 2, Cipher: "aes-128-gcm", Password: "pass"},
+		{Type: "ss", Name: "SG", Server: "sg.example.com", Port: 3, Cipher: "aes-128-gcm", Password: "pass"},
+	}
+	prof := &profile.Spec{
+		Version: 1,
+		Groups: []profile.GroupSpec{
+			{Raw: "HK`select`HK", Name: "HK", Type: "select", RegexRaw: "HK", Regex: regexp.MustCompile("HK")},
+		},
+		Rules: []model.Rule{
+			{Type: "MATCH", Action: "DIRECT"},
+		},
+	}
+
+	got, err := Compile(context.Background(), subs, prof, Options{ExpandRulesets: false})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(got.Groups) != 1 {
+		t.Fatalf("groups=%d, want=1", len(got.Groups))
+	}
+	if got.Groups[0].Name != "HK" || got.Groups[0].Type != "select" {
+		t.Fatalf("group=%+v", got.Groups[0])
+	}
+	if len(got.Groups[0].Members) != 2 || got.Groups[0].Members[0] != "HK-A" || got.Groups[0].Members[1] != "HK-B" {
+		t.Fatalf("members=%v, want=[HK-A HK-B]", got.Groups[0].Members)
+	}
+}

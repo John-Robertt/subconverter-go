@@ -271,13 +271,28 @@ func compileGroups(proxies []model.Proxy, groupSpecs []profile.GroupSpec) ([]mod
 	for _, gs := range groupSpecs {
 		switch gs.Type {
 		case "select":
-			members := make([]string, 0, len(gs.Members)+len(allNames))
-			for _, m := range gs.Members {
-				if m == "@all" {
-					members = append(members, allNames...)
-				} else {
-					members = append(members, m)
+			var members []string
+			if len(gs.Members) > 0 {
+				// Explicit member list form: []A[]B[]@all...
+				members = make([]string, 0, len(gs.Members)+len(allNames))
+				for _, m := range gs.Members {
+					if m == "@all" {
+						members = append(members, allNames...)
+					} else {
+						members = append(members, m)
+					}
 				}
+			} else if gs.Regex != nil {
+				// Regex filter form: <NAME>`select`(REGEX)
+				// Members are matched proxies only, in deterministic name order.
+				members = make([]string, 0)
+				for _, name := range allNames {
+					if gs.Regex.MatchString(name) {
+						members = append(members, name)
+					}
+				}
+			} else {
+				members = nil
 			}
 			if len(members) == 0 {
 				return nil, &CompileError{

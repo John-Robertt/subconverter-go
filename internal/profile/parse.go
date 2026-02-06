@@ -462,13 +462,38 @@ func parseGroupDirective(raw string) (GroupSpec, error) {
 	switch typ {
 	case "select":
 		if len(parts) != 3 {
-			return GroupSpec{}, errors.New("select group must be: <NAME>`select`[]<MEMBER_1>[]<MEMBER_2>...")
+			return GroupSpec{}, errors.New("select group must be: <NAME>`select`[]<MEMBER_1>[]<MEMBER_2>... or <NAME>`select`<REGEX>")
 		}
-		membersPart := parts[2]
-		if !strings.HasPrefix(membersPart, "[]") {
-			return GroupSpec{}, errors.New("select group members must start with []")
+
+		third := strings.TrimSpace(parts[2])
+		if third == "" {
+			return GroupSpec{}, errors.New("select group requires member list or regex")
 		}
-		toks := strings.Split(membersPart, "[]")
+
+		// Two supported forms:
+		// 1) explicit members: <NAME>`select`[]A[]B...
+		// 2) regex filter:     <NAME>`select`(HK|SG|US)
+		if !strings.HasPrefix(third, "[]") {
+			re, err := regexp.Compile(third)
+			if err != nil {
+				return GroupSpec{}, &directiveError{
+					Code:    "GROUP_PARSE_ERROR",
+					Message: "select 正则不可编译",
+					Hint:    "expected: <NAME>`select`(REGEX) or <NAME>`select`[]MEMBER...",
+					Cause:   err,
+				}
+			}
+			return GroupSpec{
+				Raw:      raw,
+				Name:     name,
+				Type:     "select",
+				RegexRaw: third,
+				Regex:    re,
+			}, nil
+		}
+
+		// Explicit members.
+		toks := strings.Split(third, "[]")
 		members := make([]string, 0, len(toks))
 		for _, tok := range toks[1:] {
 			tok = strings.TrimSpace(tok)
