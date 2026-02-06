@@ -20,7 +20,6 @@ const (
 	KindSubscription Kind = iota
 	KindProfile
 	KindTemplate
-	KindRuleset
 )
 
 func (k Kind) stage() string {
@@ -31,8 +30,6 @@ func (k Kind) stage() string {
 		return "fetch_profile"
 	case KindTemplate:
 		return "fetch_template"
-	case KindRuleset:
-		return "fetch_ruleset"
 	default:
 		// Unknown kind is a programmer error; still return something stable.
 		return "fetch"
@@ -48,10 +45,6 @@ func (k Kind) defaultMaxBytes() int64 {
 		return 1 * 1024 * 1024
 	case KindTemplate:
 		return 2 * 1024 * 1024
-	case KindRuleset:
-		// Some popular rulesets (e.g. adblock lists) can exceed 5 MiB.
-		// Keep a hard limit, but allow a bit more by default.
-		return 10 * 1024 * 1024
 	default:
 		return 1 * 1024 * 1024
 	}

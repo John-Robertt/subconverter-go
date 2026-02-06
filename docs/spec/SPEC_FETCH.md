@@ -1,6 +1,6 @@
 # 远程拉取（Fetch）规范（v1）
 
-本文档定义服务端拉取远程资源（订阅/profile/template/ruleset）的最小行为约束：超时、大小上限、重定向与错误分类。
+本文档定义服务端拉取远程资源（订阅/profile/template）的最小行为约束：超时、大小上限、重定向与错误分类。
 
 注意：本项目需要支持访问内网（例如订阅 URL 在内网）。因此 v1 不包含“禁止私网/内网 IP”的限制；订阅/profile/template/ruleset **均允许**使用内网或外网 URL。
 
@@ -10,11 +10,10 @@
 
 ## 1. 资源类型
 
-v1 有四类远程文本资源：
+v1 有三类远程文本资源：
 - Subscription：订阅（SS）
 - Profile：profile YAML
 - Template：目标模板（Clash YAML / Shadowrocket/Surge conf）
-- Ruleset：规则集（Clash classical list）
 
 ---
 
@@ -41,7 +40,6 @@ v1 必须对响应体做硬性大小上限（`io.LimitReader` 类似机制），
 - Subscription：<= 5 MiB
 - Profile：<= 1 MiB
 - Template：<= 2 MiB
-- Ruleset：<= 10 MiB（部分广告规则集可能超过 5 MiB）
 
 超过上限必须立刻中止并报错（建议错误码：`TOO_LARGE`；HTTP 状态码建议 422 或 502，按实现选择，但需一致）。
 
@@ -78,7 +76,7 @@ Fetch 层错误需要映射到 HTTP API 的状态码与错误结构（见《HTTP
 - URL 非法/协议不支持：`400` + `INVALID_ARGUMENT`
 
 错误体必须包含：
-- `stage=fetch_sub|fetch_profile|fetch_template|fetch_ruleset`
+- `stage=fetch_sub|fetch_profile|fetch_template`
 - `url`
 
 ---

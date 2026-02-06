@@ -33,7 +33,7 @@ func TestFetchText_TooLarge(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	_, err := FetchTextWithOptions(context.Background(), KindRuleset, ts.URL, Options{MaxBytes: 10})
+	_, err := FetchTextWithOptions(context.Background(), KindTemplate, ts.URL, Options{MaxBytes: 10})
 	var fe *FetchError
 	if !errors.As(err, &fe) {
 		t.Fatalf("expected *FetchError, got %T: %v", err, err)
@@ -44,8 +44,8 @@ func TestFetchText_TooLarge(t *testing.T) {
 	if fe.AppError.Code != "TOO_LARGE" {
 		t.Fatalf("code=%q, want=%q", fe.AppError.Code, "TOO_LARGE")
 	}
-	if fe.AppError.Stage != "fetch_ruleset" {
-		t.Fatalf("stage=%q, want=%q", fe.AppError.Stage, "fetch_ruleset")
+	if fe.AppError.Stage != "fetch_template" {
+		t.Fatalf("stage=%q, want=%q", fe.AppError.Stage, "fetch_template")
 	}
 }
 

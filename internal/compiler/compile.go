@@ -1,16 +1,13 @@
 package compiler
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
 
-	"github.com/John-Robertt/subconverter-go/internal/fetch"
 	"github.com/John-Robertt/subconverter-go/internal/model"
 	"github.com/John-Robertt/subconverter-go/internal/profile"
-	"github.com/John-Robertt/subconverter-go/internal/rules"
 )
 
 type Result struct {
@@ -18,15 +15,6 @@ type Result struct {
 	Groups  []model.Group
 	Rules   []model.Rule
 	RulesetRefs []RulesetRef
-}
-
-type Options struct {
-	// ExpandRulesets controls whether profile.ruleset is fetched and expanded into
-	// inline rule lines.
-	//
-	// - true: fetch+parse ruleset files and append them before profile.rule
-	// - false: keep ruleset as "remote reference" (renderer decides how to output)
-	ExpandRulesets bool
 }
 
 type CompileError struct {
@@ -54,7 +42,7 @@ func NormalizeSubscriptionProxies(subs []model.Proxy) ([]model.Proxy, error) {
 	return compileProxies(subs)
 }
 
-func Compile(ctx context.Context, subs []model.Proxy, prof *profile.Spec, opt Options) (*Result, error) {
+func Compile(subs []model.Proxy, prof *profile.Spec) (*Result, error) {
 	if prof == nil {
 		return nil, &CompileError{
 			AppError: model.AppError{
@@ -106,7 +94,7 @@ func Compile(ctx context.Context, subs []model.Proxy, prof *profile.Spec, opt Op
 		return nil, err
 	}
 
-	rulesOut, rulesetRefs, err := compileRules(ctx, groupNameSet, prof, opt.ExpandRulesets)
+	rulesOut, rulesetRefs, err := compileRules(groupNameSet, prof)
 	if err != nil {
 		return nil, err
 	}
@@ -349,7 +337,7 @@ func compileGroups(proxies []model.Proxy, groupSpecs []profile.GroupSpec) ([]mod
 	return out, nil
 }
 
-func compileRules(ctx context.Context, groupNameSet map[string]struct{}, prof *profile.Spec, expandRulesets bool) ([]model.Rule, []RulesetRef, error) {
+func compileRules(groupNameSet map[string]struct{}, prof *profile.Spec) ([]model.Rule, []RulesetRef, error) {
 	// Validate ruleset default actions.
 	for _, rs := range prof.Ruleset {
 		if rs.Action == "DIRECT" || rs.Action == "REJECT" {
@@ -376,24 +364,7 @@ func compileRules(ctx context.Context, groupNameSet map[string]struct{}, prof *p
 		})
 	}
 
-	out := make([]model.Rule, 0)
-	if expandRulesets {
-		// Expand rulesets first (SPEC_DETERMINISM.md).
-		for _, rs := range prof.Ruleset {
-			text, err := fetch.FetchText(ctx, fetch.KindRuleset, rs.URL)
-			if err != nil {
-				return nil, nil, err
-			}
-			ruleList, err := rules.ParseRulesetText(rs.URL, text, rs.Action)
-			if err != nil {
-				return nil, nil, err
-			}
-			out = append(out, ruleList...)
-		}
-	}
-
-	// Then append inline rules (already parsed).
-	out = append(out, prof.Rules...)
+	out := prof.Rules
 
 	// Validate: exactly one MATCH, and it must be the last rule.
 	matchCount := 0

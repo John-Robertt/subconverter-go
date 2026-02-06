@@ -28,95 +28,9 @@ func (e *RuleError) Error() string {
 
 func (e *RuleError) Unwrap() error { return e.Cause }
 
-type ParseError struct {
-	AppError model.AppError
-	Cause    error
-}
-
-func (e *ParseError) Error() string {
-	if e == nil {
-		return "<nil>"
-	}
-	if e.Cause == nil {
-		return fmt.Sprintf("%s: %s", e.AppError.Code, e.AppError.Message)
-	}
-	return fmt.Sprintf("%s: %s: %v", e.AppError.Code, e.AppError.Message, e.Cause)
-}
-
-func (e *ParseError) Unwrap() error { return e.Cause }
-
-// ParseRulesetText parses a ruleset file (Clash classical lines).
-// It allows missing ACTION in each line and fills it using defaultAction.
+// ParseInlineRule parses a single inline rule line from profile.rule.
 //
-// stage is always "parse_ruleset" to match docs/spec/SPEC_HTTP_API.md.
-func ParseRulesetText(sourceURL string, text string, defaultAction string) ([]model.Rule, error) {
-	if strings.TrimSpace(defaultAction) == "" {
-		return nil, &ParseError{
-			AppError: model.AppError{
-				Code:    "RULESET_PARSE_ERROR",
-				Message: "ruleset default action 不能为空",
-				Stage:   "parse_ruleset",
-				URL:     sourceURL,
-			},
-		}
-	}
-
-	lines := strings.Split(text, "\n")
-	out := make([]model.Rule, 0, len(lines))
-	for i, raw := range lines {
-		line := strings.TrimSpace(strings.TrimSuffix(raw, "\r"))
-		if line == "" {
-			continue
-		}
-		if strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		r, err := parseRuleLine(line, ruleParseOptions{
-			AllowNoAction: true,
-			DefaultAction: defaultAction,
-			AllowMatch:    false,
-		})
-		if err != nil {
-			var rerr *RuleError
-			if errors.As(err, &rerr) {
-				// v1: ruleset 文件始终“跳过不支持的规则类型”，避免被第三方 ruleset 卡死。
-				if rerr.Code == "UNSUPPORTED_RULE_TYPE" {
-					continue
-				}
-				return nil, &ParseError{
-					AppError: model.AppError{
-						Code:    rerr.Code,
-						Message: rerr.Message,
-						Stage:   "parse_ruleset",
-						URL:     sourceURL,
-						Line:    i + 1,
-						Snippet: truncateSnippet(raw, 200),
-						Hint:    rerr.Hint,
-					},
-					Cause: rerr.Cause,
-				}
-			}
-
-			return nil, &ParseError{
-				AppError: model.AppError{
-					Code:    "RULE_PARSE_ERROR",
-					Message: "invalid rule line",
-					Stage:   "parse_ruleset",
-					URL:     sourceURL,
-					Line:    i + 1,
-					Snippet: truncateSnippet(raw, 200),
-				},
-				Cause: err,
-			}
-		}
-		out = append(out, r)
-	}
-	return out, nil
-}
-
-// ParseInlineRule parses a single inline rule line. ACTION is required.
-// Caller is expected to attach proper stage/url/line if needed.
+// v1: all rule types require explicit ACTION, except MATCH which is "MATCH,<ACTION>".
 func ParseInlineRule(line string) (model.Rule, error) {
 	line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
 	if line == "" {
@@ -125,20 +39,10 @@ func ParseInlineRule(line string) (model.Rule, error) {
 	if strings.HasPrefix(line, "#") {
 		return model.Rule{}, &RuleError{Code: "RULE_PARSE_ERROR", Message: "rule line is comment"}
 	}
-	return parseRuleLine(line, ruleParseOptions{
-		AllowNoAction: false,
-		DefaultAction: "",
-		AllowMatch:    true,
-	})
+	return parseRuleLine(line)
 }
 
-type ruleParseOptions struct {
-	AllowNoAction bool
-	DefaultAction string
-	AllowMatch    bool
-}
-
-func parseRuleLine(line string, opt ruleParseOptions) (model.Rule, error) {
+func parseRuleLine(line string) (model.Rule, error) {
 	parts := strings.Split(line, ",")
 	for i := range parts {
 		parts[i] = strings.TrimSpace(parts[i])
@@ -150,19 +54,12 @@ func parseRuleLine(line string, opt ruleParseOptions) (model.Rule, error) {
 	typ := strings.ToUpper(parts[0])
 	switch typ {
 	case "DOMAIN", "DOMAIN-SUFFIX", "DOMAIN-KEYWORD", "GEOIP", "PROCESS-NAME", "URL-REGEX":
-		return parseSimple3(typ, parts, opt)
+		return parseSimple3(typ, parts)
 	case "IP-CIDR":
-		return parseIPCidr(parts, opt)
+		return parseIPCidr(parts)
 	case "IP-CIDR6":
-		return parseIPCidr6(parts, opt)
+		return parseIPCidr6(parts)
 	case "MATCH":
-		if !opt.AllowMatch {
-			return model.Rule{}, &RuleError{
-				Code:    "RULESET_PARSE_ERROR",
-				Message: "ruleset 不允许包含 MATCH 规则",
-				Hint:    "move MATCH into profile.rule (inline rule)",
-			}
-		}
 		if len(parts) != 2 || parts[1] == "" {
 			return model.Rule{}, &RuleError{
 				Code:    "RULE_PARSE_ERROR",
@@ -178,77 +75,40 @@ func parseRuleLine(line string, opt ruleParseOptions) (model.Rule, error) {
 	}
 }
 
-func parseSimple3(typ string, parts []string, opt ruleParseOptions) (model.Rule, error) {
-	switch len(parts) {
-	case 2:
-		if !opt.AllowNoAction {
-			return model.Rule{}, &RuleError{
-				Code:    "RULE_PARSE_ERROR",
-				Message: "规则缺少 ACTION",
-				Hint:    "expected: TYPE,VALUE,ACTION",
-			}
+func parseSimple3(typ string, parts []string) (model.Rule, error) {
+	if len(parts) == 2 {
+		return model.Rule{}, &RuleError{
+			Code:    "RULE_PARSE_ERROR",
+			Message: "规则缺少 ACTION",
+			Hint:    "expected: TYPE,VALUE,ACTION",
 		}
-		if parts[1] == "" {
-			return model.Rule{}, &RuleError{Code: "RULE_PARSE_ERROR", Message: "规则 VALUE 不能为空"}
-		}
-		return model.Rule{Type: typ, Value: parts[1], Action: opt.DefaultAction}, nil
-	case 3:
-		if parts[1] == "" || parts[2] == "" {
-			return model.Rule{}, &RuleError{Code: "RULE_PARSE_ERROR", Message: "规则 VALUE/ACTION 不能为空"}
-		}
-		return model.Rule{Type: typ, Value: parts[1], Action: parts[2]}, nil
-	default:
+	}
+	if len(parts) != 3 {
 		return model.Rule{}, &RuleError{
 			Code:    "RULE_PARSE_ERROR",
 			Message: "规则字段数量不合法",
-			Hint:    "expected: TYPE,VALUE[,ACTION]",
+			Hint:    "expected: TYPE,VALUE,ACTION",
 		}
 	}
+	if parts[1] == "" || parts[2] == "" {
+		return model.Rule{}, &RuleError{Code: "RULE_PARSE_ERROR", Message: "规则 VALUE/ACTION 不能为空"}
+	}
+	return model.Rule{Type: typ, Value: parts[1], Action: parts[2]}, nil
 }
 
-func parseIPCidr(parts []string, opt ruleParseOptions) (model.Rule, error) {
+func parseIPCidr(parts []string) (model.Rule, error) {
 	switch len(parts) {
-	case 2:
-		if !opt.AllowNoAction {
-			return model.Rule{}, &RuleError{
-				Code:    "RULE_PARSE_ERROR",
-				Message: "IP-CIDR 规则缺少 ACTION",
-				Hint:    "expected: IP-CIDR,CIDR,ACTION[,no-resolve]",
-			}
-		}
-		if err := validateIPv4CIDR(parts[1]); err != nil {
-			return model.Rule{}, &RuleError{
-				Code:    "RULE_PARSE_ERROR",
-				Message: "IP-CIDR 的 CIDR 不合法",
-				Hint:    "expected: IPv4 CIDR, e.g. 1.2.3.4/32",
-				Cause:   err,
-			}
-		}
-		return model.Rule{Type: "IP-CIDR", Value: parts[1], Action: opt.DefaultAction}, nil
 	case 3:
 		if parts[2] == "" {
 			return model.Rule{}, &RuleError{Code: "RULE_PARSE_ERROR", Message: "IP-CIDR 的 ACTION 不能为空"}
 		}
 		if strings.EqualFold(parts[2], "no-resolve") {
-			if !opt.AllowNoAction {
-				// Inline rule requires explicit ACTION, so "no-resolve" here is ambiguous.
-				return model.Rule{}, &RuleError{
-					Code:    "RULE_PARSE_ERROR",
-					Message: "IP-CIDR 缺少 ACTION（不允许仅写 no-resolve）",
-					Hint:    "expected: IP-CIDR,CIDR,ACTION[,no-resolve]",
-				}
+			// Inline rule requires explicit ACTION, so "no-resolve" here is ambiguous.
+			return model.Rule{}, &RuleError{
+				Code:    "RULE_PARSE_ERROR",
+				Message: "IP-CIDR 缺少 ACTION（不允许仅写 no-resolve）",
+				Hint:    "expected: IP-CIDR,CIDR,ACTION[,no-resolve]",
 			}
-			// In ruleset mode, ACTION may be omitted and filled by DefaultAction,
-			// so "IP-CIDR,<cidr>,no-resolve" is unambiguous.
-			if err := validateIPv4CIDR(parts[1]); err != nil {
-				return model.Rule{}, &RuleError{
-					Code:    "RULE_PARSE_ERROR",
-					Message: "IP-CIDR 的 CIDR 不合法",
-					Hint:    "expected: IPv4 CIDR, e.g. 1.2.3.4/32",
-					Cause:   err,
-				}
-			}
-			return model.Rule{Type: "IP-CIDR", Value: parts[1], Action: opt.DefaultAction, NoResolve: true}, nil
 		}
 		if err := validateIPv4CIDR(parts[1]); err != nil {
 			return model.Rule{}, &RuleError{
@@ -288,47 +148,18 @@ func parseIPCidr(parts []string, opt ruleParseOptions) (model.Rule, error) {
 	}
 }
 
-func parseIPCidr6(parts []string, opt ruleParseOptions) (model.Rule, error) {
+func parseIPCidr6(parts []string) (model.Rule, error) {
 	switch len(parts) {
-	case 2:
-		if !opt.AllowNoAction {
-			return model.Rule{}, &RuleError{
-				Code:    "RULE_PARSE_ERROR",
-				Message: "IP-CIDR6 规则缺少 ACTION",
-				Hint:    "expected: IP-CIDR6,CIDR,ACTION[,no-resolve]",
-			}
-		}
-		if err := validateIPv6CIDR(parts[1]); err != nil {
-			return model.Rule{}, &RuleError{
-				Code:    "RULE_PARSE_ERROR",
-				Message: "IP-CIDR6 的 CIDR 不合法",
-				Hint:    "expected: IPv6 CIDR, e.g. 2001:db8::/32",
-				Cause:   err,
-			}
-		}
-		return model.Rule{Type: "IP-CIDR6", Value: parts[1], Action: opt.DefaultAction}, nil
 	case 3:
 		if parts[2] == "" {
 			return model.Rule{}, &RuleError{Code: "RULE_PARSE_ERROR", Message: "IP-CIDR6 的 ACTION 不能为空"}
 		}
 		if strings.EqualFold(parts[2], "no-resolve") {
-			if !opt.AllowNoAction {
-				// Inline rule requires explicit ACTION, so "no-resolve" here is ambiguous.
-				return model.Rule{}, &RuleError{
-					Code:    "RULE_PARSE_ERROR",
-					Message: "IP-CIDR6 缺少 ACTION（不允许仅写 no-resolve）",
-					Hint:    "expected: IP-CIDR6,CIDR,ACTION[,no-resolve]",
-				}
+			return model.Rule{}, &RuleError{
+				Code:    "RULE_PARSE_ERROR",
+				Message: "IP-CIDR6 缺少 ACTION（不允许仅写 no-resolve）",
+				Hint:    "expected: IP-CIDR6,CIDR,ACTION[,no-resolve]",
 			}
-			if err := validateIPv6CIDR(parts[1]); err != nil {
-				return model.Rule{}, &RuleError{
-					Code:    "RULE_PARSE_ERROR",
-					Message: "IP-CIDR6 的 CIDR 不合法",
-					Hint:    "expected: IPv6 CIDR, e.g. 2001:db8::/32",
-					Cause:   err,
-				}
-			}
-			return model.Rule{Type: "IP-CIDR6", Value: parts[1], Action: opt.DefaultAction, NoResolve: true}, nil
 		}
 		if err := validateIPv6CIDR(parts[1]); err != nil {
 			return model.Rule{}, &RuleError{
@@ -390,14 +221,3 @@ func validateIPv6CIDR(s string) error {
 	return nil
 }
 
-func truncateSnippet(s string, max int) string {
-	s = strings.ReplaceAll(s, "\r", "")
-	s = strings.ReplaceAll(s, "\n", "")
-	if max <= 0 {
-		return ""
-	}
-	if len(s) <= max {
-		return s
-	}
-	return s[:max]
-}

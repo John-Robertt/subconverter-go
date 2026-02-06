@@ -14,8 +14,8 @@ func TestWriteError_JSONShapeAndHeaders(t *testing.T) {
 	WriteError(rr, http.StatusUnprocessableEntity, model.AppError{
 		Code:    "RULE_PARSE_ERROR",
 		Message: "invalid rule line",
-		Stage:   "parse_ruleset",
-		URL:     "https://example.com/Proxy.list",
+		Stage:   "parse_profile",
+		URL:     "https://example.com/profile.yaml",
 		Line:    123,
 		Snippet: "DOMAIN-SUFFIX,google.com",
 		Hint:    "expected: TYPE,VALUE[,ACTION][,no-resolve]",
@@ -36,8 +36,8 @@ func TestWriteError_JSONShapeAndHeaders(t *testing.T) {
 	if resp.Error.Code != "RULE_PARSE_ERROR" {
 		t.Fatalf("code = %q, want %q", resp.Error.Code, "RULE_PARSE_ERROR")
 	}
-	if resp.Error.Stage != "parse_ruleset" {
-		t.Fatalf("stage = %q, want %q", resp.Error.Stage, "parse_ruleset")
+	if resp.Error.Stage != "parse_profile" {
+		t.Fatalf("stage = %q, want %q", resp.Error.Stage, "parse_profile")
 	}
 	if resp.Error.Line != 123 {
 		t.Fatalf("line = %d, want %d", resp.Error.Line, 123)

@@ -1,10 +1,7 @@
 package compiler
 
 import (
-	"context"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"regexp"
 	"testing"
 
@@ -12,13 +9,7 @@ import (
 	"github.com/John-Robertt/subconverter-go/internal/profile"
 )
 
-func TestCompile_DeterminismAndExpansion(t *testing.T) {
-	rsText := "DOMAIN-SUFFIX,google.com\nIP-CIDR,1.1.1.1/32,DIRECT,no-resolve\n"
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(rsText))
-	}))
-	defer ts.Close()
-
+func TestCompile_DeterminismAndRulesetRefs(t *testing.T) {
 	subs := []model.Proxy{
 		{Type: "ss", Name: "HK", Server: "Example.COM", Port: 8388, Cipher: "AES-128-GCM", Password: "pass"},
 		{Type: "ss", Name: "HK", Server: "example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pass"}, // dup
@@ -34,7 +25,7 @@ func TestCompile_DeterminismAndExpansion(t *testing.T) {
 			{Raw: "AUTO`url-test`HK`https://www.gstatic.com/generate_204`300", Name: "AUTO", Type: "url-test", RegexRaw: "HK", Regex: regexp.MustCompile("HK"), TestURL: "https://www.gstatic.com/generate_204", IntervalSec: 300},
 		},
 		Ruleset: []profile.RulesetSpec{
-			{Raw: "PROXY," + ts.URL, Action: "PROXY", URL: ts.URL},
+			{Raw: "PROXY,https://example.com/r.list", Action: "PROXY", URL: "https://example.com/r.list"},
 		},
 		Rules: []model.Rule{
 			{Type: "DOMAIN", Value: "example.com", Action: "PROXY"},
@@ -42,7 +33,7 @@ func TestCompile_DeterminismAndExpansion(t *testing.T) {
 		},
 	}
 
-	got, err := Compile(context.Background(), subs, prof, Options{ExpandRulesets: true})
+	got, err := Compile(subs, prof)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -74,11 +65,18 @@ func TestCompile_DeterminismAndExpansion(t *testing.T) {
 		t.Fatalf("group1 members=%v", got.Groups[1].Members)
 	}
 
-	if len(got.Rules) != 4 {
-		t.Fatalf("rules=%d, want=4", len(got.Rules))
+	if len(got.RulesetRefs) != 1 {
+		t.Fatalf("rulesetRefs=%d, want=1", len(got.RulesetRefs))
 	}
-	if got.Rules[0].Type != "DOMAIN-SUFFIX" || got.Rules[0].Action != "PROXY" {
-		t.Fatalf("ruleset rule0=%+v", got.Rules[0])
+	if got.RulesetRefs[0].Action != "PROXY" || got.RulesetRefs[0].URL != "https://example.com/r.list" {
+		t.Fatalf("rulesetRef0=%+v", got.RulesetRefs[0])
+	}
+
+	if len(got.Rules) != 2 {
+		t.Fatalf("rules=%d, want=2", len(got.Rules))
+	}
+	if got.Rules[0].Type != "DOMAIN" || got.Rules[0].Value != "example.com" || got.Rules[0].Action != "PROXY" {
+		t.Fatalf("rule0=%+v", got.Rules[0])
 	}
 	if got.Rules[len(got.Rules)-1].Type != "MATCH" {
 		t.Fatalf("last rule=%+v", got.Rules[len(got.Rules)-1])
@@ -99,7 +97,7 @@ func TestCompile_URLTestEmpty(t *testing.T) {
 		},
 	}
 
-	_, err := Compile(context.Background(), subs, prof, Options{ExpandRulesets: true})
+	_, err := Compile(subs, prof)
 	var ce *CompileError
 	if !errors.As(err, &ce) {
 		t.Fatalf("expected *CompileError, got %T: %v", err, err)
@@ -125,7 +123,7 @@ func TestCompile_SelectRegexMembers(t *testing.T) {
 		},
 	}
 
-	got, err := Compile(context.Background(), subs, prof, Options{ExpandRulesets: false})
+	got, err := Compile(subs, prof)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -10,7 +10,6 @@ import (
 	"github.com/John-Robertt/subconverter-go/internal/model"
 	"github.com/John-Robertt/subconverter-go/internal/profile"
 	"github.com/John-Robertt/subconverter-go/internal/render"
-	"github.com/John-Robertt/subconverter-go/internal/rules"
 	"github.com/John-Robertt/subconverter-go/internal/sub/ss"
 	"github.com/John-Robertt/subconverter-go/internal/template"
 )
@@ -75,12 +74,6 @@ func writeErrorFromErr(w http.ResponseWriter, err error) {
 	var pe *profile.ParseError
 	if errors.As(err, &pe) {
 		WriteError(w, http.StatusUnprocessableEntity, pe.AppError)
-		return
-	}
-
-	var rpe *rules.ParseError
-	if errors.As(err, &rpe) {
-		WriteError(w, http.StatusUnprocessableEntity, rpe.AppError)
 		return
 	}
 

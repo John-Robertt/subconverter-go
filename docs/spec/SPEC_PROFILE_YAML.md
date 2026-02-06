@@ -210,7 +210,7 @@ profile 解析/编译阶段至少必须校验：
 ## 6. 错误定位要求（面向用户修远程文件）
 
 服务端返回错误时应尽可能包含：
-- 出错阶段（stage）：`parse_profile` / `parse_ruleset` / `compile` 等
+- 出错阶段（stage）：`parse_profile` / `compile` 等
 - 远程 URL（如果来自远程资源）
 - 行号（如果是文本行错误）
 - 片段（snippet）：原始出错行（截断到合理长度）

@@ -106,8 +106,8 @@ body：
   "error": {
     "code": "RULE_PARSE_ERROR",
     "message": "invalid rule line",
-    "stage": "parse_ruleset",
-    "url": "https://example.com/Proxy.list",
+    "stage": "parse_profile",
+    "url": "https://example.com/profile.yaml",
     "line": 123,
     "snippet": "DOMAIN-SUFFIX,google.com",
     "hint": "expected: TYPE,VALUE[,ACTION][,no-resolve]"
@@ -129,7 +129,6 @@ body：
 - `fetch_sub` / `parse_sub`
 - `fetch_profile` / `parse_profile`
 - `fetch_template` / `validate_template`
-- `fetch_ruleset` / `parse_ruleset`
 - `compile`
 - `render`
 
@@ -139,7 +138,7 @@ body：
 
 状态码建议（最小集合）：
 - `400`：请求参数不合法（缺字段/枚举值不支持/JSON 非法）
-- `422`：远程内容或语义校验失败（profile/模板/ruleset/订阅内容解析失败、引用不成立等）
+- `422`：远程内容或语义校验失败（profile/模板/订阅内容解析失败、引用不成立等）
 - `502`：拉取远程资源失败（非超时，如连接失败、DNS 失败、上游返回 5xx 等）
 - `504`：拉取远程资源超时
 - `500`：服务端内部错误（bug）
