@@ -54,6 +54,8 @@
 对每个 Proxy 先得到一个“基础名” `baseName`：
 - 若订阅提供 `#name`：URL 解码后得到的名称，去首尾空白，作为 `baseName`。
 - 否则：使用 `"<server>:<port>"` 作为 `baseName`。
+基础名必须做最小兼容性规范化：
+- 将所有 `=` 字符替换为 `-`（避免 Surge 系列配置解析失败；该处理必须是确定性的）。
 
 然后按“合并顺序”依次为每个节点分配最终 `Name`，保证全局唯一：
 - 若 `baseName` 未被占用且不是保留名：使用 `baseName`。
@@ -129,12 +131,16 @@ v1 需要去重以避免重复节点污染策略组与 UI。去重必须确定�
 当 `mode=config&target=surge` 时需要生成 `<CURRENT_CONVERT_URL>`。
 
 为保证稳定，v1 要求：
-- 对于 GET 请求：直接使用当前请求的完整 URL（包含 query）作为 `<CURRENT_CONVERT_URL>` 的来源（必要时按反代策略重建 scheme/host；细节见实现文档）。
-- 对于 POST 请求：必须生成一个语义等价的 `GET /sub?...` URL，并使用固定参数顺序：
+- **统一生成**：无论请求是 GET 还是 POST，`<CURRENT_CONVERT_URL>` 都必须由服务端根据“解析后的参数”重新序列化生成，不得直接复用原始 query 字符串（避免参数顺序/编码差异导致输出不稳定）。
+
+- base URL 选择：
+  1) 若 profile 提供 `public_base_url`（见《Profile YAML 规范》），必须使用它作为 base URL（推荐它已包含 `/sub` 路径）。
+  2) 否则使用当前请求推导出的 base URL（scheme/host/path）。若服务部署在反代后，推导规则属于实现细节，但必须保证对外可访问。
+
+- query 参数序列化顺序（固定）：
   1) `mode=config`
   2) `target=surge`
-  3) 按 `subs[]` 原顺序重复输出 `sub=...`
-  4) `profile=...`
+  3) 按请求中订阅数组顺序重复输出 `sub=<url>`（GET 的 `sub=` 出现顺序；POST 的 `subs[]` 数组顺序）
+  4) `profile=<url>`
 
 （该顺序只影响字符串稳定性，不影响语义。）
-

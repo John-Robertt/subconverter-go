@@ -32,6 +32,7 @@
 - `mode=list`：只拉取/解析订阅，输出 ss:// 节点列表（`encode` 控制是否 base64）。
 - `mode=config`：拉取/解析订阅 + 拉取/解析 profile + 拉取模板 + 拉取 ruleset，编译后输出目标配置文件。
   - 若 `target=surge`，服务端必须确保输出的第一个非空行是当前请求对应的 `#!MANAGED-CONFIG <URL> ...`（用于 Surge 定时更新）。
+    - `<URL>` 的 base URL 若 profile 提供 `public_base_url`，必须使用该字段（见《Profile YAML 规范》）。
 
 示例：
 
@@ -141,6 +142,8 @@ body：
 - `RULE_PARSE_ERROR`
 - `GROUP_PARSE_ERROR`
 - `GROUP_UNSUPPORTED_TYPE`
+- `UNSUPPORTED_PLUGIN`
+- `UNSUPPORTED_RULE_TYPE`
 - `REFERENCE_NOT_FOUND`
 - `UNSUPPORTED_TARGET`
 

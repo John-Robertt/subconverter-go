@@ -5,6 +5,8 @@ template:
   shadowrocket: "http://127.0.0.1:8000/materials/templates/shadowrocket.conf"
   surge: "http://127.0.0.1:8000/materials/templates/surge.conf"
 
+public_base_url: "http://127.0.0.1:25500/sub"
+
 custom_proxy_group:
   # 主选择组：包含测速组 + 所有节点 + 直连
   - "PROXY`select`[]AUTO[]@all[]DIRECT"

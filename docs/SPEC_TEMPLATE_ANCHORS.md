@@ -111,6 +111,7 @@ Surge 支持在配置文件顶部添加一行 managed config 指令，用于客�
 ```
 
 其中 `<CURRENT_CONVERT_URL>` 是“当前请求对应的订阅转换链接”，通常等价于本次请求的 `GET /sub?...` URL（需要包含 `mode=config&target=surge` 以及订阅/profile 等参数）。
+`<CURRENT_CONVERT_URL>` 的稳定生成规则见《输出稳定性与规范化规范》；当 profile 提供 `public_base_url` 时必须使用它作为 base URL。
 
 约束（v1）：
 - 若模板的第一个非空行已经是 `#!MANAGED-CONFIG ...`，服务端必须**重写其中的 URL** 为 `<CURRENT_CONVERT_URL>`，并保留其余参数（如 `interval=... strict=...`）。

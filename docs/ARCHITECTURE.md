@@ -141,6 +141,7 @@ v1 优先支持：
 - 模板锚点规范（锚点、缩进规则、Shadowrocket/Clash 模板约束）：`SPEC_TEMPLATE_ANCHORS.md`
 - 规则集规范（Clash classical 支持范围、ACTION 缺省策略、注释/空行规则）
 - HTTP API 规范（参数、返回、错误结构、content-type、缓存语义）：`SPEC_HTTP_API.md`
+- 渲染规范（Clash/Surge/Shadowrocket 语法映射与约束）：`SPEC_RENDER_TARGETS.md`
 - SS 订阅解析规范（编码识别、URI 支持范围、错误定位）：`SPEC_SUBSCRIPTION_SS.md`
 - 输出稳定性与规范化规范（去重、命名、排序、稳定 URL 生成）：`SPEC_DETERMINISM.md`
 - 远程拉取（Fetch）规范（超时/大小上限/重定向/错误分类）：`SPEC_FETCH.md`

@@ -18,6 +18,8 @@ template:
   shadowrocket: "https://example.com/base_sr.conf"
   surge: "https://example.com/base_surge.conf"
 
+public_base_url: "https://sub-api.example.com/sub"
+
 custom_proxy_group:
   - "PROXY`select`[]AUTO[]DIRECT"
   - "AUTO`url-test`(HK|SG)`http://www.gstatic.com/generate_204`300"
@@ -51,7 +53,18 @@ rule:
 - `mode=config` 时必须存在，并且必须包含目标 `target` 对应的模板 URL。
 - URL 必须是 `http` 或 `https`。
 
-### 2.3 `custom_proxy_group`（可选，推荐）
+### 2.3 `public_base_url`（可选，但 `target=surge` 时强烈建议）
+
+- 类型：字符串（URL）
+- 约束：
+  - 必须是 `http` 或 `https` 的绝对 URL
+  - 不得包含 query/fragment（即不允许 `?` 与 `#`）
+  - 推荐直接指向本服务的 `GET /sub` 端点（含路径，不含 query），例如：`https://sub-api.example.com/sub`
+- 语义：
+  - 用于生成 Surge 输出中的 `#!MANAGED-CONFIG <CURRENT_CONVERT_URL> ...` 行。
+  - 若提供该字段，服务端生成 `<CURRENT_CONVERT_URL>` 时必须以它作为 base URL，而不是从当前请求的 Host/反代头推导。
+
+### 2.4 `custom_proxy_group`（可选，推荐）
 
 - 类型：list[string]
 - 语义：按顺序定义策略组（组会被编译进 Core IR，再由各 target renderer 生成对应语法）。
@@ -59,7 +72,7 @@ rule:
 注意：本字段的每一项是“指令字符串”，语法与 Rules.ini 的 `custom_proxy_group=` 类似，但 v1 只支持一个**严格子集**（见第 3 节）。
 关于策略组/成员的最终排序、`@all` 展开顺序等稳定性要求，见《输出稳定性与规范化规范》。
 
-### 2.4 `ruleset`（可选）
+### 2.5 `ruleset`（可选）
 
 - 类型：list[string]
 - 语义：按顺序引入远程规则集，并绑定默认 ACTION。
@@ -78,7 +91,7 @@ ACTION,URL
 - 服务端会拉取 URL 内容并解析为规则列表，然后在最终规则输出中按 `ruleset` 的顺序展开插入。
 - 规则集文件内部每行按“Clash classical 规则行”解析（见第 4 节）。如果规则行缺省 ACTION，则使用该 `ruleset` 指令指定的 `ACTION` 作为默认值。
 
-### 2.5 `rule`（可选，但强烈推荐）
+### 2.6 `rule`（可选，但强烈推荐）
 
 - 类型：list[string]
 - 语义：追加 inline 规则（按顺序）。
