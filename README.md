@@ -38,6 +38,12 @@ go build -o subconverter-go ./cmd/subconverter-go
 curl -fsS http://127.0.0.1:25500/healthz
 ```
 
+可选：打开内置 UI（生成订阅转换链接）：
+
+```text
+http://127.0.0.1:25500/
+```
+
 ## 使用方式
 
 ### 1) 输出配置文件（mode=config）
