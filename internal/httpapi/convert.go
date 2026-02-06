@@ -27,6 +27,7 @@ type convertRequest struct {
 	Target    render.Target
 	Subs      []string
 	Profile   string
+	FileName  string // optional: output attachment file base name (without path)
 	Encode    string // only for mode=list: "base64" | "raw"
 	isFromGET bool   // used for error hinting; not part of API
 }
@@ -36,6 +37,7 @@ type convertRequestJSON struct {
 	Target  string   `json:"target"`
 	Subs    []string `json:"subs"`
 	Profile string   `json:"profile"`
+	FileName string  `json:"fileName"`
 	Encode  string   `json:"encode"`
 }
 
@@ -79,7 +81,10 @@ func runConvert(ctx context.Context, r *http.Request, req convertRequest) (strin
 			return "", err
 		}
 
-		res, err := compiler.Compile(ctx, subs, prof)
+		expandRulesets := req.Target == render.TargetClash
+		res, err := compiler.Compile(ctx, subs, prof, compiler.Options{
+			ExpandRulesets: expandRulesets,
+		})
 		if err != nil {
 			return "", err
 		}
@@ -250,12 +255,17 @@ func buildSurgeManagedConfigURL(r *http.Request, req convertRequest, publicBaseU
 	// Deterministic query serialization (SPEC_DETERMINISM.md):
 	// 1) mode=config
 	// 2) target=surge
-	// 3) sub=... in input order
-	// 4) profile=...
-	u.RawQuery = serializeQuery([]kv{
+	// 3) fileName=... (optional)
+	// 4) sub=... in input order
+	// 5) profile=...
+	prefix := []kv{
 		{k: "mode", v: "config"},
 		{k: "target", v: "surge"},
-	}, req.Subs, req.Profile)
+	}
+	if strings.TrimSpace(req.FileName) != "" {
+		prefix = append(prefix, kv{k: "fileName", v: strings.TrimSpace(req.FileName)})
+	}
+	u.RawQuery = serializeQuery(prefix, req.Subs, req.Profile)
 	u.Fragment = ""
 	return u.String(), nil
 }
@@ -304,7 +314,7 @@ func parseConvertGET(r *http.Request) (convertRequest, error) {
 	q := r.URL.Query()
 	for key := range q {
 		switch key {
-		case "mode", "target", "sub", "profile", "encode":
+		case "mode", "target", "sub", "profile", "encode", "fileName", "filename":
 		default:
 			return convertRequest{}, requestError("INVALID_ARGUMENT", fmt.Sprintf("不支持的 query 参数：%s", key), "")
 		}
@@ -349,7 +359,11 @@ func parseConvertGET(r *http.Request) (convertRequest, error) {
 		if encode != "base64" && encode != "raw" {
 			return convertRequest{}, requestError("INVALID_ARGUMENT", "不支持的 encode（仅支持 base64/raw）", encode)
 		}
-		return convertRequest{Mode: "list", Subs: subs2, Encode: encode, isFromGET: true}, nil
+		fileName, err := fileNameQuery(q)
+		if err != nil {
+			return convertRequest{}, err
+		}
+		return convertRequest{Mode: "list", Subs: subs2, Encode: encode, FileName: fileName, isFromGET: true}, nil
 	}
 
 	// mode=config
@@ -372,11 +386,16 @@ func parseConvertGET(r *http.Request) (convertRequest, error) {
 	if profileURL == "" {
 		return convertRequest{}, requestError("INVALID_ARGUMENT", "profile 不能为空", "")
 	}
+	fileName, err := fileNameQuery(q)
+	if err != nil {
+		return convertRequest{}, err
+	}
 	return convertRequest{
 		Mode:      "config",
 		Target:    target,
 		Subs:      subs2,
 		Profile:   profileURL,
+		FileName:  fileName,
 		isFromGET: true,
 	}, nil
 }
@@ -425,7 +444,7 @@ func parseConvertPOST(r *http.Request) (convertRequest, error) {
 		if encode != "base64" && encode != "raw" {
 			return convertRequest{}, requestError("INVALID_ARGUMENT", "不支持的 encode（仅支持 base64/raw）", encode)
 		}
-		return convertRequest{Mode: "list", Subs: subs, Encode: encode}, nil
+		return convertRequest{Mode: "list", Subs: subs, Encode: encode, FileName: strings.TrimSpace(body.FileName)}, nil
 	}
 
 	// mode=config
@@ -441,7 +460,7 @@ func parseConvertPOST(r *http.Request) (convertRequest, error) {
 	if profileURL == "" {
 		return convertRequest{}, requestError("INVALID_ARGUMENT", "profile 不能为空", "")
 	}
-	return convertRequest{Mode: "config", Target: target, Subs: subs, Profile: profileURL}, nil
+	return convertRequest{Mode: "config", Target: target, Subs: subs, Profile: profileURL, FileName: strings.TrimSpace(body.FileName)}, nil
 }
 
 func parseTarget(s string) (render.Target, error) {
@@ -452,9 +471,34 @@ func parseTarget(s string) (render.Target, error) {
 		return render.TargetShadowrocket, nil
 	case string(render.TargetSurge):
 		return render.TargetSurge, nil
+	case string(render.TargetQuanx):
+		return render.TargetQuanx, nil
 	default:
-		return "", requestError("INVALID_ARGUMENT", "不支持的 target（仅支持 clash/shadowrocket/surge）", s)
+		return "", requestError("INVALID_ARGUMENT", "不支持的 target（仅支持 clash/shadowrocket/surge/quanx）", s)
 	}
+}
+
+func fileNameQuery(q url.Values) (string, error) {
+	fn, err := singleQuery(q, "fileName", false)
+	if err != nil {
+		return "", err
+	}
+	fn2, err := singleQuery(q, "filename", false)
+	if err != nil {
+		return "", err
+	}
+	fn = strings.TrimSpace(fn)
+	fn2 = strings.TrimSpace(fn2)
+	if fn == "" {
+		return fn2, nil
+	}
+	if fn2 == "" {
+		return fn, nil
+	}
+	if fn != fn2 {
+		return "", requestError("INVALID_ARGUMENT", "fileName 与 filename 同时存在且不一致", "")
+	}
+	return fn, nil
 }
 
 func singleQuery(q url.Values, key string, required bool) (string, error) {

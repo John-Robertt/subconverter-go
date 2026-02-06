@@ -166,6 +166,28 @@ func TestInjectAnchors_ClashAnchorIndentZero(t *testing.T) {
 	}
 }
 
+func TestInjectAnchors_QuanxSectionError(t *testing.T) {
+	templateText := "" +
+		"[policy]\n" +
+		"#@GROUPS@#\n" +
+		"[server_local]\n" +
+		"#@PROXIES@#\n" +
+		"[general]\n" +
+		"#@RULES@#\n"
+
+	_, err := InjectAnchors(templateText, render.Blocks{}, AnchorOptions{
+		Target:      render.TargetQuanx,
+		TemplateURL: "https://example.com/quanx.conf",
+	})
+	var te *TemplateError
+	if !errors.As(err, &te) {
+		t.Fatalf("expected *TemplateError, got %T: %v", err, err)
+	}
+	if te.AppError.Code != "TEMPLATE_SECTION_ERROR" {
+		t.Fatalf("code=%q, want=%q", te.AppError.Code, "TEMPLATE_SECTION_ERROR")
+	}
+}
+
 func hasBareLF(s string) bool {
 	for i := 0; i < len(s); i++ {
 		if s[i] != '\n' {
@@ -177,4 +199,3 @@ func hasBareLF(s string) bool {
 	}
 	return false
 }
-

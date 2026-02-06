@@ -110,7 +110,9 @@ v1 需要去重以避免重复节点污染策略组与 UI。去重必须确定�
 ### 5.3 规则输出顺序
 
 最终规则列表顺序必须严格为：
-1) 按 profile 的 `ruleset` 列表顺序逐个展开插入（每个 ruleset 内部保持文件行顺序）。
+1) 按 profile 的 `ruleset` 列表顺序逐个插入（不同 target 的呈现不同，但顺序必须一致）：
+   - Clash：展开 ruleset 文件内容（每个 ruleset 内部保持文件行顺序）
+   - Surge/Shadowrocket/Quantumult X：输出 ruleset 的“远程引用行”（不展开到配置文件）
 2) 再按 profile 的 `rule` 列表顺序追加 inline 规则。
 
 规则不做任何排序或去重（除非未来新增明确开关），以保证“用户写的顺序就是最终顺序”。
@@ -162,7 +164,8 @@ ss://<B64URL(method:password)>@<host>:<port>[/?plugin=<PCT_ENCODED(plugin)>][#<P
 - query 参数序列化顺序（固定）：
   1) `mode=config`
   2) `target=surge`
-  3) 按请求中订阅数组顺序重复输出 `sub=<url>`（GET 的 `sub=` 出现顺序；POST 的 `subs[]` 数组顺序）
-  4) `profile=<url>`
+  3) `fileName=<name>`（可选）
+  4) 按请求中订阅数组顺序重复输出 `sub=<url>`（GET 的 `sub=` 出现顺序；POST 的 `subs[]` 数组顺序）
+  5) `profile=<url>`
 
 （该顺序只影响字符串稳定性，不影响语义。）

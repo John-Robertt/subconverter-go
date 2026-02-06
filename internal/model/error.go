@@ -1,6 +1,6 @@
 package model
 
-// AppError is the only error payload returned by this service in "strict mode".
+// AppError is the only error payload returned by this service.
 // It is designed to match docs/spec/SPEC_HTTP_API.md.
 type AppError struct {
 	Code    string `json:"code"`

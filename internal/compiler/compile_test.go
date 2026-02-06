@@ -42,7 +42,7 @@ func TestCompile_DeterminismAndExpansion(t *testing.T) {
 		},
 	}
 
-	got, err := Compile(context.Background(), subs, prof)
+	got, err := Compile(context.Background(), subs, prof, Options{ExpandRulesets: true})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestCompile_URLTestEmpty(t *testing.T) {
 		},
 	}
 
-	_, err := Compile(context.Background(), subs, prof)
+	_, err := Compile(context.Background(), subs, prof, Options{ExpandRulesets: true})
 	var ce *CompileError
 	if !errors.As(err, &ce) {
 		t.Fatalf("expected *CompileError, got %T: %v", err, err)

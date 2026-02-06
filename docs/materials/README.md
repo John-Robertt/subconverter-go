@@ -36,6 +36,6 @@ python3 -m http.server 8000
 
 注意：
 - 这套材料只是“最小样例”，方便你快速打通 fetch/parse/compile/render 的流水线。
-- 本项目是严格模式：改坏任何一行都应该得到结构化错误（带 URL/行号/片段）。
+- 本项目没有“宽松修复”路径：改坏任何一行都应该得到结构化错误（带 URL/行号/片段）。
 - `target=surge` 时，转换服务需要确保输出的首个非空行是 `#!MANAGED-CONFIG <URL> ...`（URL 为当前请求对应的订阅转换链接）。模板可不包含该行，服务端会自动插入。
 - `materials/profile.yaml` 包含 `public_base_url: http://127.0.0.1:25500/sub`，用于生成 Surge 的 managed-config URL；你的服务端口不同需同步修改。

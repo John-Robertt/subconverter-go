@@ -5,4 +5,6 @@ subconverter/
 *.exe
 *.test
 *.out
+SS.txt
+/out
 /subconverter-go

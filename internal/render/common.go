@@ -11,7 +11,7 @@ func ruleToClashString(r model.Rule) string {
 	if r.Type == "MATCH" {
 		return fmt.Sprintf("MATCH,%s", r.Action)
 	}
-	if r.Type == "IP-CIDR" && r.NoResolve {
+	if (r.Type == "IP-CIDR" || r.Type == "IP-CIDR6") && r.NoResolve {
 		return fmt.Sprintf("%s,%s,%s,no-resolve", r.Type, r.Value, r.Action)
 	}
 	return fmt.Sprintf("%s,%s,%s", r.Type, r.Value, r.Action)
@@ -23,7 +23,7 @@ func ruleToSurgeString(r model.Rule) string {
 		typ = "FINAL"
 		return fmt.Sprintf("%s,%s", typ, r.Action)
 	}
-	if r.Type == "IP-CIDR" && r.NoResolve {
+	if (r.Type == "IP-CIDR" || r.Type == "IP-CIDR6") && r.NoResolve {
 		return fmt.Sprintf("%s,%s,%s,no-resolve", typ, r.Value, r.Action)
 	}
 	return fmt.Sprintf("%s,%s,%s", typ, r.Value, r.Action)

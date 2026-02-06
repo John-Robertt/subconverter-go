@@ -41,7 +41,7 @@ v1 必须对响应体做硬性大小上限（`io.LimitReader` 类似机制），
 - Subscription：<= 5 MiB
 - Profile：<= 1 MiB
 - Template：<= 2 MiB
-- Ruleset：<= 5 MiB
+- Ruleset：<= 10 MiB（部分广告规则集可能超过 5 MiB）
 
 超过上限必须立刻中止并报错（建议错误码：`TOO_LARGE`；HTTP 状态码建议 422 或 502，按实现选择，但需一致）。
 
@@ -89,4 +89,4 @@ Fetch 层错误需要映射到 HTTP API 的状态码与错误结构（见《HTTP
 - 对相同 URL 的并发拉取进行去重（singleflight），避免缓存击穿/上游被打爆。
 - 可使用 ETag/Last-Modified 做条件请求，减少带宽。
 
-无论是否缓存，**严格模式的“错误可定位”要求不变**：报错必须带上游 URL 与尽可能多的定位信息。
+无论是否缓存，**错误可定位**要求不变：报错必须带上游 URL 与尽可能多的定位信息。

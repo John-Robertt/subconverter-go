@@ -80,6 +80,10 @@ func ParseRulesetText(sourceURL string, text string, defaultAction string) ([]mo
 		if err != nil {
 			var rerr *RuleError
 			if errors.As(err, &rerr) {
+				// v1: ruleset 文件始终“跳过不支持的规则类型”，避免被第三方 ruleset 卡死。
+				if rerr.Code == "UNSUPPORTED_RULE_TYPE" {
+					continue
+				}
 				return nil, &ParseError{
 					AppError: model.AppError{
 						Code:    rerr.Code,
@@ -145,10 +149,12 @@ func parseRuleLine(line string, opt ruleParseOptions) (model.Rule, error) {
 
 	typ := strings.ToUpper(parts[0])
 	switch typ {
-	case "DOMAIN", "DOMAIN-SUFFIX", "DOMAIN-KEYWORD", "GEOIP":
+	case "DOMAIN", "DOMAIN-SUFFIX", "DOMAIN-KEYWORD", "GEOIP", "PROCESS-NAME", "URL-REGEX":
 		return parseSimple3(typ, parts, opt)
 	case "IP-CIDR":
 		return parseIPCidr(parts, opt)
+	case "IP-CIDR6":
+		return parseIPCidr6(parts, opt)
 	case "MATCH":
 		if !opt.AllowMatch {
 			return model.Rule{}, &RuleError{
@@ -224,12 +230,25 @@ func parseIPCidr(parts []string, opt ruleParseOptions) (model.Rule, error) {
 			return model.Rule{}, &RuleError{Code: "RULE_PARSE_ERROR", Message: "IP-CIDR 的 ACTION 不能为空"}
 		}
 		if strings.EqualFold(parts[2], "no-resolve") {
-			// Ambiguous: missing action but has option.
-			return model.Rule{}, &RuleError{
-				Code:    "RULE_PARSE_ERROR",
-				Message: "IP-CIDR 缺少 ACTION（不允许仅写 no-resolve）",
-				Hint:    "expected: IP-CIDR,CIDR,ACTION[,no-resolve]",
+			if !opt.AllowNoAction {
+				// Inline rule requires explicit ACTION, so "no-resolve" here is ambiguous.
+				return model.Rule{}, &RuleError{
+					Code:    "RULE_PARSE_ERROR",
+					Message: "IP-CIDR 缺少 ACTION（不允许仅写 no-resolve）",
+					Hint:    "expected: IP-CIDR,CIDR,ACTION[,no-resolve]",
+				}
 			}
+			// In ruleset mode, ACTION may be omitted and filled by DefaultAction,
+			// so "IP-CIDR,<cidr>,no-resolve" is unambiguous.
+			if err := validateIPv4CIDR(parts[1]); err != nil {
+				return model.Rule{}, &RuleError{
+					Code:    "RULE_PARSE_ERROR",
+					Message: "IP-CIDR 的 CIDR 不合法",
+					Hint:    "expected: IPv4 CIDR, e.g. 1.2.3.4/32",
+					Cause:   err,
+				}
+			}
+			return model.Rule{Type: "IP-CIDR", Value: parts[1], Action: opt.DefaultAction, NoResolve: true}, nil
 		}
 		if err := validateIPv4CIDR(parts[1]); err != nil {
 			return model.Rule{}, &RuleError{
@@ -269,6 +288,86 @@ func parseIPCidr(parts []string, opt ruleParseOptions) (model.Rule, error) {
 	}
 }
 
+func parseIPCidr6(parts []string, opt ruleParseOptions) (model.Rule, error) {
+	switch len(parts) {
+	case 2:
+		if !opt.AllowNoAction {
+			return model.Rule{}, &RuleError{
+				Code:    "RULE_PARSE_ERROR",
+				Message: "IP-CIDR6 规则缺少 ACTION",
+				Hint:    "expected: IP-CIDR6,CIDR,ACTION[,no-resolve]",
+			}
+		}
+		if err := validateIPv6CIDR(parts[1]); err != nil {
+			return model.Rule{}, &RuleError{
+				Code:    "RULE_PARSE_ERROR",
+				Message: "IP-CIDR6 的 CIDR 不合法",
+				Hint:    "expected: IPv6 CIDR, e.g. 2001:db8::/32",
+				Cause:   err,
+			}
+		}
+		return model.Rule{Type: "IP-CIDR6", Value: parts[1], Action: opt.DefaultAction}, nil
+	case 3:
+		if parts[2] == "" {
+			return model.Rule{}, &RuleError{Code: "RULE_PARSE_ERROR", Message: "IP-CIDR6 的 ACTION 不能为空"}
+		}
+		if strings.EqualFold(parts[2], "no-resolve") {
+			if !opt.AllowNoAction {
+				// Inline rule requires explicit ACTION, so "no-resolve" here is ambiguous.
+				return model.Rule{}, &RuleError{
+					Code:    "RULE_PARSE_ERROR",
+					Message: "IP-CIDR6 缺少 ACTION（不允许仅写 no-resolve）",
+					Hint:    "expected: IP-CIDR6,CIDR,ACTION[,no-resolve]",
+				}
+			}
+			if err := validateIPv6CIDR(parts[1]); err != nil {
+				return model.Rule{}, &RuleError{
+					Code:    "RULE_PARSE_ERROR",
+					Message: "IP-CIDR6 的 CIDR 不合法",
+					Hint:    "expected: IPv6 CIDR, e.g. 2001:db8::/32",
+					Cause:   err,
+				}
+			}
+			return model.Rule{Type: "IP-CIDR6", Value: parts[1], Action: opt.DefaultAction, NoResolve: true}, nil
+		}
+		if err := validateIPv6CIDR(parts[1]); err != nil {
+			return model.Rule{}, &RuleError{
+				Code:    "RULE_PARSE_ERROR",
+				Message: "IP-CIDR6 的 CIDR 不合法",
+				Hint:    "expected: IPv6 CIDR, e.g. 2001:db8::/32",
+				Cause:   err,
+			}
+		}
+		return model.Rule{Type: "IP-CIDR6", Value: parts[1], Action: parts[2]}, nil
+	case 4:
+		if parts[2] == "" {
+			return model.Rule{}, &RuleError{Code: "RULE_PARSE_ERROR", Message: "IP-CIDR6 的 ACTION 不能为空"}
+		}
+		if !strings.EqualFold(parts[3], "no-resolve") {
+			return model.Rule{}, &RuleError{
+				Code:    "RULE_PARSE_ERROR",
+				Message: "IP-CIDR6 的可选项仅支持 no-resolve",
+				Hint:    "expected: IP-CIDR6,CIDR,ACTION[,no-resolve]",
+			}
+		}
+		if err := validateIPv6CIDR(parts[1]); err != nil {
+			return model.Rule{}, &RuleError{
+				Code:    "RULE_PARSE_ERROR",
+				Message: "IP-CIDR6 的 CIDR 不合法",
+				Hint:    "expected: IPv6 CIDR, e.g. 2001:db8::/32",
+				Cause:   err,
+			}
+		}
+		return model.Rule{Type: "IP-CIDR6", Value: parts[1], Action: parts[2], NoResolve: true}, nil
+	default:
+		return model.Rule{}, &RuleError{
+			Code:    "RULE_PARSE_ERROR",
+			Message: "IP-CIDR6 规则字段数量不合法",
+			Hint:    "expected: IP-CIDR6,CIDR,ACTION[,no-resolve]",
+		}
+	}
+}
+
 func validateIPv4CIDR(s string) error {
 	ip, _, err := net.ParseCIDR(strings.TrimSpace(s))
 	if err != nil {
@@ -276,6 +375,17 @@ func validateIPv4CIDR(s string) error {
 	}
 	if ip == nil || ip.To4() == nil {
 		return errors.New("not an ipv4 cidr")
+	}
+	return nil
+}
+
+func validateIPv6CIDR(s string) error {
+	ip, _, err := net.ParseCIDR(strings.TrimSpace(s))
+	if err != nil {
+		return err
+	}
+	if ip == nil || ip.To16() == nil || ip.To4() != nil {
+		return errors.New("not an ipv6 cidr")
 	}
 	return nil
 }

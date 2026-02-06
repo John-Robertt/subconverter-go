@@ -43,7 +43,7 @@ func TestE2E_Materials_ConfigAndList(t *testing.T) {
 	}
 
 	{
-		wantSR := expectedShadowrocketConfig()
+		wantSR := expectedShadowrocketConfig(profileURL)
 		gotSR := doGET(t, mux, "/sub?mode=config&target=shadowrocket&sub="+url.QueryEscape(subURL)+"&profile="+url.QueryEscape(profileURL))
 		if gotSR != wantSR {
 			t.Fatalf("shadowrocket output mismatch\n--- got ---\n%s\n--- want ---\n%s", gotSR, wantSR)
@@ -73,6 +73,24 @@ func TestE2E_Materials_ConfigAndList(t *testing.T) {
 		})
 		if gotSurgePOST != gotSurge {
 			t.Fatalf("surge GET/POST mismatch\n--- GET ---\n%s\n--- POST ---\n%s", gotSurge, gotSurgePOST)
+		}
+	}
+
+	{
+		wantQX := expectedQuanxConfig(profileURL)
+		gotQX := doGET(t, mux, "/sub?mode=config&target=quanx&sub="+url.QueryEscape(subURL)+"&profile="+url.QueryEscape(profileURL))
+		if gotQX != wantQX {
+			i := firstDiff(gotQX, wantQX)
+			t.Fatalf("quanx output mismatch (len got=%d want=%d firstDiff=%d)\n--- got ---\n%s\n--- want ---\n%s", len(gotQX), len(wantQX), i, gotQX, wantQX)
+		}
+		gotQXPOST := doPOSTJSON(t, mux, "/api/convert", map[string]any{
+			"mode":    "config",
+			"target":  "quanx",
+			"subs":    []string{subURL},
+			"profile": profileURL,
+		})
+		if gotQXPOST != gotQX {
+			t.Fatalf("quanx GET/POST mismatch\n--- GET ---\n%s\n--- POST ---\n%s", gotQX, gotQXPOST)
 		}
 	}
 
@@ -150,6 +168,7 @@ func newMaterialsUpstream(t *testing.T) *httptest.Server {
 	clashTmpl := read("docs/materials/templates/clash.yaml")
 	surgeTmpl := read("docs/materials/templates/surge.conf")
 	srTmpl := read("docs/materials/templates/shadowrocket.conf")
+	quanxTmpl := read("docs/materials/templates/quanx.conf")
 	lan := read("docs/materials/rulesets/LAN.list")
 	banad := read("docs/materials/rulesets/BanAD.list")
 	proxy := read("docs/materials/rulesets/Proxy.list")
@@ -167,6 +186,9 @@ func newMaterialsUpstream(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/materials/templates/shadowrocket.conf", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(srTmpl)
 	})
+	mux.HandleFunc("/materials/templates/quanx.conf", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(quanxTmpl)
+	})
 	mux.HandleFunc("/materials/rulesets/LAN.list", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(lan)
 	})
@@ -176,18 +198,19 @@ func newMaterialsUpstream(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/materials/rulesets/Proxy.list", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(proxy)
 	})
-	mux.HandleFunc("/materials/profile.yaml", func(w http.ResponseWriter, r *http.Request) {
-		// Generate URLs pointing back to this upstream server.
-		base := "http://" + r.Host
-		profileYAML := "" +
-			"version: 1\n\n" +
-			"template:\n" +
-			"  clash: \"" + base + "/materials/templates/clash.yaml\"\n" +
-			"  shadowrocket: \"" + base + "/materials/templates/shadowrocket.conf\"\n" +
-			"  surge: \"" + base + "/materials/templates/surge.conf\"\n\n" +
-			"public_base_url: \"https://public.example.com/sub\"\n\n" +
-			"custom_proxy_group:\n" +
-			"  - \"PROXY`select`[]AUTO[]@all[]DIRECT\"\n" +
+		mux.HandleFunc("/materials/profile.yaml", func(w http.ResponseWriter, r *http.Request) {
+			// Generate URLs pointing back to this upstream server.
+			base := "http://" + r.Host
+			profileYAML := "" +
+				"version: 1\n\n" +
+				"template:\n" +
+				"  clash: \"" + base + "/materials/templates/clash.yaml\"\n" +
+				"  shadowrocket: \"" + base + "/materials/templates/shadowrocket.conf\"\n" +
+				"  surge: \"" + base + "/materials/templates/surge.conf\"\n" +
+				"  quanx: \"" + base + "/materials/templates/quanx.conf\"\n\n" +
+				"public_base_url: \"https://public.example.com/sub\"\n\n" +
+				"custom_proxy_group:\n" +
+				"  - \"PROXY`select`[]AUTO[]@all[]DIRECT\"\n" +
 			"  - \"AUTO`url-test`(Example|HK|SG|US)`http://www.gstatic.com/generate_204`300`50\"\n\n" +
 			"ruleset:\n" +
 			"  - \"DIRECT," + base + "/materials/rulesets/LAN.list\"\n" +
@@ -272,7 +295,11 @@ func expectedClashConfig() string {
 		"\n"
 }
 
-func expectedShadowrocketConfig() string {
+func expectedShadowrocketConfig(profileURL string) string {
+	base := materialsBase(profileURL)
+	lan := base + "/materials/rulesets/LAN.list"
+	banad := base + "/materials/rulesets/BanAD.list"
+	proxy := base + "/materials/rulesets/Proxy.list"
 	return "" +
 		"[General]\n" +
 		"loglevel = notify\n" +
@@ -289,16 +316,9 @@ func expectedShadowrocketConfig() string {
 		"AUTO = url-test, Example-HK, Example-SG, Example-US, url=http://www.gstatic.com/generate_204, interval=300, tolerance=50\n" +
 		"\n" +
 		"[Rule]\n" +
-		"IP-CIDR,192.168.0.0/16,DIRECT\n" +
-		"IP-CIDR,10.0.0.0/8,DIRECT\n" +
-		"IP-CIDR,172.16.0.0/12,DIRECT\n" +
-		"DOMAIN-SUFFIX,local,DIRECT\n" +
-		"DOMAIN-SUFFIX,doubleclick.net,REJECT\n" +
-		"DOMAIN-SUFFIX,googlesyndication.com,REJECT\n" +
-		"DOMAIN-SUFFIX,adservice.google.com,REJECT\n" +
-		"DOMAIN-SUFFIX,google.com,PROXY\n" +
-		"DOMAIN-SUFFIX,github.com,PROXY\n" +
-		"DOMAIN-SUFFIX,youtube.com,PROXY\n" +
+		"RULE-SET," + lan + ",DIRECT\n" +
+		"RULE-SET," + banad + ",REJECT\n" +
+		"RULE-SET," + proxy + ",PROXY\n" +
 		"FINAL,PROXY\n" +
 		"\n"
 }
@@ -306,11 +326,15 @@ func expectedShadowrocketConfig() string {
 func expectedSurgeConfig(subURL, profileURL string) string {
 	managedURL := "https://public.example.com/sub?mode=config&target=surge&sub=" + pctEncodeExpect(subURL) + "&profile=" + pctEncodeExpect(profileURL)
 	return "" +
-		"#!MANAGED-CONFIG " + managedURL + " interval=86400 strict=false\n" +
-		expectedSurgeLikeBody()
+		"#!MANAGED-CONFIG " + managedURL + " interval=86400\n" +
+		expectedSurgeLikeBody(profileURL)
 }
 
-func expectedSurgeLikeBody() string {
+func expectedSurgeLikeBody(profileURL string) string {
+	base := materialsBase(profileURL)
+	lan := base + "/materials/rulesets/LAN.list"
+	banad := base + "/materials/rulesets/BanAD.list"
+	proxy := base + "/materials/rulesets/Proxy.list"
 	// Same as shadowrocket materials template, but without the extra trailing blank line.
 	return "" +
 		"[General]\n" +
@@ -328,17 +352,58 @@ func expectedSurgeLikeBody() string {
 		"AUTO = url-test, Example-HK, Example-SG, Example-US, url=http://www.gstatic.com/generate_204, interval=300, tolerance=50\n" +
 		"\n" +
 		"[Rule]\n" +
-		"IP-CIDR,192.168.0.0/16,DIRECT\n" +
-		"IP-CIDR,10.0.0.0/8,DIRECT\n" +
-		"IP-CIDR,172.16.0.0/12,DIRECT\n" +
-		"DOMAIN-SUFFIX,local,DIRECT\n" +
-		"DOMAIN-SUFFIX,doubleclick.net,REJECT\n" +
-		"DOMAIN-SUFFIX,googlesyndication.com,REJECT\n" +
-		"DOMAIN-SUFFIX,adservice.google.com,REJECT\n" +
-		"DOMAIN-SUFFIX,google.com,PROXY\n" +
-		"DOMAIN-SUFFIX,github.com,PROXY\n" +
-		"DOMAIN-SUFFIX,youtube.com,PROXY\n" +
+		"RULE-SET," + lan + ",DIRECT\n" +
+		"RULE-SET," + banad + ",REJECT\n" +
+		"RULE-SET," + proxy + ",PROXY\n" +
 		"FINAL,PROXY\n"
+}
+
+func expectedQuanxConfig(profileURL string) string {
+	base := materialsBase(profileURL)
+	lan := base + "/materials/rulesets/LAN.list"
+	banad := base + "/materials/rulesets/BanAD.list"
+	proxy := base + "/materials/rulesets/Proxy.list"
+	return "" +
+		"[general]\n" +
+		"# Minimal Quantumult X template for subconverter-go v1.\n" +
+		"# Blocks are injected by anchors (do not write anchor tokens in comments, or template validation will fail):\n" +
+		"# - PROXIES anchor into [server_local]\n" +
+		"# - GROUPS anchor into [policy]\n" +
+		"# - RULESETS anchor into [filter_remote]\n" +
+		"# - RULES anchor into [filter_local]\n" +
+		"\n" +
+		"network_check_url=http://www.gstatic.com/generate_204\n" +
+		"server_check_url=http://www.gstatic.com/generate_204\n" +
+		"\n" +
+		"[dns]\n" +
+		"server=1.1.1.1\n" +
+		"server=8.8.8.8\n" +
+		"\n" +
+		"[policy]\n" +
+		"static=PROXY, AUTO, Example-HK, Example-SG, Example-US, direct\n" +
+		"url-latency-benchmark=AUTO, Example-HK, Example-SG, Example-US, check-interval=300, tolerance=50\n" +
+		"\n" +
+		"[server_local]\n" +
+		"shadowsocks = hk.example.com:8388, method=aes-128-gcm, password=password, tag=Example-HK\n" +
+		"shadowsocks = sg.example.com:8388, method=chacha20-ietf-poly1305, password=pass123, tag=Example-SG\n" +
+		"shadowsocks = us.example.com:8388, method=aes-256-gcm, password=passw0rd, tag=Example-US\n" +
+		"\n" +
+		"[filter_remote]\n" +
+		lan + ", tag=DIRECT, force-policy=direct, enabled=true\n" +
+		banad + ", tag=REJECT, force-policy=reject, enabled=true\n" +
+		proxy + ", tag=PROXY, force-policy=PROXY, enabled=true\n" +
+		"\n" +
+		"[filter_local]\n" +
+		"FINAL,PROXY\n"
+}
+
+func materialsBase(profileURL string) string {
+	const suffix = "/materials/profile.yaml"
+	if !strings.HasSuffix(profileURL, suffix) {
+		// Panic in tests: this is a programmer error.
+		panic("unexpected profileURL: " + profileURL)
+	}
+	return strings.TrimSuffix(profileURL, suffix)
 }
 
 func expectedListRaw() string {
@@ -352,3 +417,19 @@ func pctEncodeExpect(s string) string {
 	return strings.ReplaceAll(url.QueryEscape(s), "+", "%20")
 }
 
+func firstDiff(a, b string) int {
+	na, nb := len(a), len(b)
+	n := na
+	if nb < n {
+		n = nb
+	}
+	for i := 0; i < n; i++ {
+		if a[i] != b[i] {
+			return i
+		}
+	}
+	if na != nb {
+		return n
+	}
+	return -1
+}

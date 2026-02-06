@@ -213,7 +213,7 @@ func parseQueryPlugin(sourceURL string, lineNo int, query string, hasQuery bool,
 		kRaw, vRaw, hasEq := strings.Cut(part, "=")
 		if !hasEq {
 			// Unlike net/url.ParseQuery we do not accept key-without-=
-			// because it makes strict validation ambiguous.
+			// because it makes validation ambiguous.
 			return "", nil, newParseError(sourceURL, lineNo, truncateSnippet(fullLine, 200), "SUB_PARSE_ERROR", "query 参数必须是 key=value 形式", "", nil)
 		}
 		k, err := url.PathUnescape(kRaw)

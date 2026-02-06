@@ -17,6 +17,16 @@ type Result struct {
 	Proxies []model.Proxy
 	Groups  []model.Group
 	Rules   []model.Rule
+	RulesetRefs []RulesetRef
+}
+
+type Options struct {
+	// ExpandRulesets controls whether profile.ruleset is fetched and expanded into
+	// inline rule lines.
+	//
+	// - true: fetch+parse ruleset files and append them before profile.rule
+	// - false: keep ruleset as "remote reference" (renderer decides how to output)
+	ExpandRulesets bool
 }
 
 type CompileError struct {
@@ -44,7 +54,7 @@ func NormalizeSubscriptionProxies(subs []model.Proxy) ([]model.Proxy, error) {
 	return compileProxies(subs)
 }
 
-func Compile(ctx context.Context, subs []model.Proxy, prof *profile.Spec) (*Result, error) {
+func Compile(ctx context.Context, subs []model.Proxy, prof *profile.Spec, opt Options) (*Result, error) {
 	if prof == nil {
 		return nil, &CompileError{
 			AppError: model.AppError{
@@ -96,7 +106,7 @@ func Compile(ctx context.Context, subs []model.Proxy, prof *profile.Spec) (*Resu
 		return nil, err
 	}
 
-	rulesOut, err := compileRules(ctx, groupNameSet, prof)
+	rulesOut, rulesetRefs, err := compileRules(ctx, groupNameSet, prof, opt.ExpandRulesets)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +115,14 @@ func Compile(ctx context.Context, subs []model.Proxy, prof *profile.Spec) (*Resu
 		Proxies: proxies,
 		Groups:  groups,
 		Rules:   rulesOut,
+		RulesetRefs: rulesetRefs,
 	}, nil
+}
+
+type RulesetRef struct {
+	Raw    string
+	Action string
+	URL    string
 }
 
 func compileProxies(in []model.Proxy) ([]model.Proxy, error) {
@@ -317,14 +334,14 @@ func compileGroups(proxies []model.Proxy, groupSpecs []profile.GroupSpec) ([]mod
 	return out, nil
 }
 
-func compileRules(ctx context.Context, groupNameSet map[string]struct{}, prof *profile.Spec) ([]model.Rule, error) {
+func compileRules(ctx context.Context, groupNameSet map[string]struct{}, prof *profile.Spec, expandRulesets bool) ([]model.Rule, []RulesetRef, error) {
 	// Validate ruleset default actions.
 	for _, rs := range prof.Ruleset {
 		if rs.Action == "DIRECT" || rs.Action == "REJECT" {
 			continue
 		}
 		if _, ok := groupNameSet[rs.Action]; !ok {
-			return nil, &CompileError{
+			return nil, nil, &CompileError{
 				AppError: model.AppError{
 					Code:    "REFERENCE_NOT_FOUND",
 					Message: fmt.Sprintf("ruleset ACTION 引用不存在：%s", rs.Action),
@@ -335,19 +352,29 @@ func compileRules(ctx context.Context, groupNameSet map[string]struct{}, prof *p
 		}
 	}
 
-	out := make([]model.Rule, 0)
-
-	// Expand rulesets first (SPEC_DETERMINISM.md).
+	rulesetRefs := make([]RulesetRef, 0, len(prof.Ruleset))
 	for _, rs := range prof.Ruleset {
-		text, err := fetch.FetchText(ctx, fetch.KindRuleset, rs.URL)
-		if err != nil {
-			return nil, err
+		rulesetRefs = append(rulesetRefs, RulesetRef{
+			Raw:    rs.Raw,
+			Action: rs.Action,
+			URL:    rs.URL,
+		})
+	}
+
+	out := make([]model.Rule, 0)
+	if expandRulesets {
+		// Expand rulesets first (SPEC_DETERMINISM.md).
+		for _, rs := range prof.Ruleset {
+			text, err := fetch.FetchText(ctx, fetch.KindRuleset, rs.URL)
+			if err != nil {
+				return nil, nil, err
+			}
+			ruleList, err := rules.ParseRulesetText(rs.URL, text, rs.Action)
+			if err != nil {
+				return nil, nil, err
+			}
+			out = append(out, ruleList...)
 		}
-		ruleList, err := rules.ParseRulesetText(rs.URL, text, rs.Action)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, ruleList...)
 	}
 
 	// Then append inline rules (already parsed).
@@ -363,7 +390,7 @@ func compileRules(ctx context.Context, groupNameSet map[string]struct{}, prof *p
 		}
 	}
 	if matchCount != 1 {
-		return nil, &CompileError{
+		return nil, nil, &CompileError{
 			AppError: model.AppError{
 				Code:    "RULE_PARSE_ERROR",
 				Message: fmt.Sprintf("兜底规则 MATCH 数量不合法（got=%d, want=1）", matchCount),
@@ -372,7 +399,7 @@ func compileRules(ctx context.Context, groupNameSet map[string]struct{}, prof *p
 		}
 	}
 	if matchIndex != len(out)-1 {
-		return nil, &CompileError{
+		return nil, nil, &CompileError{
 			AppError: model.AppError{
 				Code:    "RULE_PARSE_ERROR",
 				Message: "兜底规则 MATCH 必须是最后一条",
@@ -387,7 +414,7 @@ func compileRules(ctx context.Context, groupNameSet map[string]struct{}, prof *p
 			continue
 		}
 		if _, ok := groupNameSet[r.Action]; !ok {
-			return nil, &CompileError{
+			return nil, nil, &CompileError{
 				AppError: model.AppError{
 					Code:    "REFERENCE_NOT_FOUND",
 					Message: fmt.Sprintf("规则 ACTION 引用不存在：%s", r.Action),
@@ -398,14 +425,14 @@ func compileRules(ctx context.Context, groupNameSet map[string]struct{}, prof *p
 		}
 	}
 
-	return out, nil
+	return out, rulesetRefs, nil
 }
 
 func ruleSnippet(r model.Rule) string {
 	if r.Type == "MATCH" {
 		return fmt.Sprintf("MATCH,%s", r.Action)
 	}
-	if r.Type == "IP-CIDR" && r.NoResolve {
+	if (r.Type == "IP-CIDR" || r.Type == "IP-CIDR6") && r.NoResolve {
 		return fmt.Sprintf("%s,%s,%s,no-resolve", r.Type, r.Value, r.Action)
 	}
 	return fmt.Sprintf("%s,%s,%s", r.Type, r.Value, r.Action)

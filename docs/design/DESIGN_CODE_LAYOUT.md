@@ -61,7 +61,7 @@
 
 - `internal/render`
   - 目标渲染：把 IR 渲染为三段文本块（proxies/groups/rules）
-  - 可按 target 分子包：`internal/render/clash`、`internal/render/surge`、`internal/render/shadowrocket`
+  - 可按 target 分子包：`internal/render/clash`、`internal/render/surge`、`internal/render/shadowrocket`、`internal/render/quanx`
   - 行为按 `../spec/SPEC_RENDER_TARGETS.md`
 
 - `internal/template`

@@ -109,3 +109,35 @@ func TestRender_SurgeLike_GroupNameInvalid(t *testing.T) {
 		t.Fatalf("code=%q, want=%q", re.AppError.Code, "PROFILE_VALIDATE_ERROR")
 	}
 }
+
+func TestRender_Quanx_TagCommaQuotedAndRuleTypeMapping(t *testing.T) {
+	res := &compiler.Result{
+		Proxies: []model.Proxy{
+			{Type: "ss", Name: "a,b", Server: "example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pass"},
+		},
+		Groups: []model.Group{
+			{Name: "PROXY", Type: "select", Members: []string{"a,b", "DIRECT", "REJECT"}},
+		},
+		Rules: []model.Rule{
+			{Type: "IP-CIDR6", Value: "2001:db8::/32", Action: "PROXY", NoResolve: true},
+			{Type: "MATCH", Action: "DIRECT"},
+		},
+	}
+
+	blocks, err := Render(TargetQuanx, res)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(blocks.Proxies, `tag="a,b"`) {
+		t.Fatalf("tag should be quoted, got:\n%s", blocks.Proxies)
+	}
+	if !strings.Contains(blocks.Groups, `static=PROXY, "a,b", direct, reject`) {
+		t.Fatalf("policy group members should be mapped and quoted, got:\n%s", blocks.Groups)
+	}
+	if !strings.Contains(blocks.Rules, `IP6-CIDR,2001:db8::/32,PROXY,no-resolve`) {
+		t.Fatalf("IP-CIDR6 should map to IP6-CIDR, got:\n%s", blocks.Rules)
+	}
+	if !strings.Contains(blocks.Rules, `FINAL,direct`) {
+		t.Fatalf("MATCH should map to FINAL and DIRECT->direct, got:\n%s", blocks.Rules)
+	}
+}

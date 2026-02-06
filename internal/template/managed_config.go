@@ -10,7 +10,7 @@ import (
 const managedConfigPrefix = "#!MANAGED-CONFIG"
 
 // EnsureSurgeManagedConfig ensures the first non-empty line is:
-//   #!MANAGED-CONFIG <currentConvertURL> interval=86400 strict=false
+//   #!MANAGED-CONFIG <currentConvertURL> interval=86400
 //
 // Rules are defined in docs/spec/SPEC_TEMPLATE_ANCHORS.md.
 func EnsureSurgeManagedConfig(text string, currentConvertURL string, templateURL string) (string, error) {
@@ -73,7 +73,7 @@ func EnsureSurgeManagedConfig(text string, currentConvertURL string, templateURL
 		lines[managedLine] = rewritten
 	} else {
 		// Insert with v1 default params.
-		defaultLine := fmt.Sprintf("%s %s interval=86400 strict=false", managedConfigPrefix, currentConvertURL)
+		defaultLine := fmt.Sprintf("%s %s interval=86400", managedConfigPrefix, currentConvertURL)
 		lines = append([]string{defaultLine}, lines...)
 	}
 
@@ -149,4 +149,3 @@ func managedConfigAmbiguous(templateURL, msg string) error {
 		},
 	}
 }
-

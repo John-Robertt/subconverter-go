@@ -19,10 +19,10 @@
 
 v1 优先支持：
 - 输入：Shadowsocks（SS）订阅（base64 或明文 ss:// 列表）。
-- 输出目标（target）：`clash`、`shadowrocket`、`surge`。
+- 输出目标（target）：`clash`、`shadowrocket`、`surge`、`quanx`。
 - 规则解析：以 **Clash classical 规则行** 作为统一规则输入格式（远程 ruleset 与 inline rule 共用一套解析器）。
 
-### 1.2 严格模式（唯一模式）
+### 1.2 错误即失败（无宽松开关）
 
 服务端是“编译器”而不是“修复器”：
 - 任何解析失败、语义不完整、能力不支持、模板锚点异常、引用不成立等问题，**一律 HTTP 返回错误**。
@@ -45,7 +45,7 @@ v1 优先支持：
 - 覆盖所有客户端的所有字段/特性（例如各客户端的 DNS/TUN/脚本等“全局配置宇宙”）。
 - 在服务端执行任何远程内容（不支持可执行模板语言；不执行 JS/Lua/脚本）。
 - “自动修复”用户的远程 profile/template/ruleset（出错就报错，用户自己修）。
-- 依赖客户端运行时去拉 ruleset（v1 规则集在服务端拉取并展开成最终规则文本）。
+- 为了“统一输出”而强制在服务端展开所有 ruleset（Surge/Shadowrocket/QuanX 支持远程 ruleset 引用，v1 直接输出引用行；仅 Clash 需要时才展开）。
 
 ---
 
@@ -96,7 +96,7 @@ v1 优先支持：
 
 整个服务固定为四段流水线（每段都必须可单测、可定位错误）：
 
-1) Fetch：拉取订阅/profile/template/ruleset（超时、大小上限、缓存、并发去重）
+1) Fetch：拉取订阅/profile/template（以及需要展开时的 ruleset）（超时、大小上限、缓存、并发去重）
 2) Parse：分别解析输入文本为结构化数据（订阅->Proxy；profile->ProfileSpec；ruleset->Rule）
 3) Compile：将 ProfileSpec + Proxies 编译为最终 IR（组生成、规则拼装、语义校验）
 4) Render：按 target 输出文本；`mode=config` 再注入模板锚点得到最终配置文件

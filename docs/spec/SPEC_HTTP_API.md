@@ -1,6 +1,10 @@
 # HTTP API 规范（v1）
 
-本服务提供“订阅转换”能力，严格模式（唯一模式）：任何错误都必须返回 HTTP 错误与结构化信息，便于用户修改远程文件。
+本服务提供“订阅转换”能力：任何错误都必须返回 HTTP 错误与结构化信息，便于用户修改远程文件。
+
+v1 约定：
+- profile inline rule（`profile.rule`）：语法不合法 / 不支持的规则类型 → 直接报错。
+- ruleset 文件（`profile.ruleset` 指向的远程文件）在需要展开时（目前仅 Clash 展开）：遇到“不支持的规则类型”允许跳过该行（`UNSUPPORTED_RULE_TYPE`），其余错误仍然必须返回 HTTP 错误（例如语法错误、CIDR 不合法、引用不存在等）。
 
 ---
 
@@ -23,16 +27,21 @@
 
 查询参数：
 - `mode`（必填）：`config` | `list`
-- `target`（`mode=config` 必填）：`clash` | `shadowrocket` | `surge`
+- `target`（`mode=config` 必填）：`clash` | `shadowrocket` | `surge` | `quanx`
 - `sub`（必填，可重复）：订阅 URL（允许多次传入，表示合并）
 - `profile`（`mode=config` 必填）：profile YAML 的 URL
 - `encode`（`mode=list` 可选）：`base64` | `raw`（默认 `base64`）
+- `fileName`（可选）：生成文件名（不含路径；通常不需要带扩展名）。缺省时服务端使用默认文件名：
+  - `mode=list`：`ss.txt`
+  - `mode=config`：按 target 选择扩展名（例如 `clash.yaml`、`surge.conf`、`shadowrocket.conf`、`quanx.conf`）
 
 行为：
 - `mode=list`：只拉取/解析订阅，输出 ss:// 节点列表（`encode` 控制是否 base64）。
-- `mode=config`：拉取/解析订阅 + 拉取/解析 profile + 拉取模板 + 拉取 ruleset，编译后输出目标配置文件。
+- `mode=config`：拉取/解析订阅 + 拉取/解析 profile + 拉取模板 + （对 Clash）拉取 ruleset 并展开，编译后输出目标配置文件。
   - 若 `target=surge`，服务端必须确保输出的第一个非空行是当前请求对应的 `#!MANAGED-CONFIG <URL> ...`（用于 Surge 定时更新）。
     - `<URL>` 的 base URL 若 profile 提供 `public_base_url`，必须使用该字段（见《Profile YAML 规范》）。
+  - 服务端应设置 `Content-Disposition`（attachment）。若提供 `fileName`，则使用它作为文件名（并按 target/mode 自动补扩展名）；若缺省则使用默认文件名。
+  - 若提供 `fileName` 且 `target=surge`，服务端必须在 Surge managed-config URL 中携带该参数，以便后续更新保持一致。
 
 示例：
 
@@ -40,6 +49,8 @@
 /sub?mode=list&sub=https%3A%2F%2Fexample.com%2Fss.txt
 /sub?mode=config&target=shadowrocket&sub=https%3A%2F%2Fexample.com%2Fss.txt&profile=https%3A%2F%2Fexample.com%2Frules.yaml
 /sub?mode=config&target=surge&sub=https%3A%2F%2Fexample.com%2Fss.txt&profile=https%3A%2F%2Fexample.com%2Frules.yaml
+/sub?mode=config&target=clash&sub=https%3A%2F%2Fexample.com%2Fss.txt&profile=https%3A%2F%2Fexample.com%2Frules.yaml
+/sub?mode=config&target=surge&fileName=my_surge&sub=https%3A%2F%2Fexample.com%2Fss.txt&profile=https%3A%2F%2Fexample.com%2Frules.yaml
 ```
 
 ---
@@ -59,6 +70,7 @@ body：
   "target": "shadowrocket",
   "subs": ["https://example.com/ss.txt"],
   "profile": "https://example.com/rules.yaml",
+  "fileName": "my_shadowrocket",
   "encode": "base64"
 }
 ```
@@ -68,6 +80,7 @@ body：
 - `target`：同 GET（`mode=config` 必填）
 - `subs`：同 GET 的多 `sub` 合并
 - `profile`：同 GET
+- `fileName`：同 GET
 - `encode`：仅 `mode=list` 生效
 
 响应：同第 1 节约定。

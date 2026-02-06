@@ -112,6 +112,7 @@ DoD：
 DoD：
 - 能从 IR 生成 `proxiesBlock/groupsBlock/rulesBlock`
 - Surge/Shadowrocket 的名称可表示性规则生效（逗号/引号/双引号报错）
+- Quantumult X 的 tag/策略名可表示性规则生效（逗号引用、双引号报错）
 - `MATCH -> FINAL`（Surge/Shadowrocket）
 
 建议测试：
@@ -145,7 +146,7 @@ DoD：
 - `../materials/README.md`
 
 DoD：
-- 使用 `../materials/` 的 profile/template/ruleset/subscription，三种 target 都能生成稳定输出
+- 使用 `../materials/` 的 profile/template/ruleset/subscription，四种 target（clash/surge/shadowrocket/quanx）都能生成稳定输出
 - 关键边界：Surge managed-config URL 必须按规范序列化（GET/POST 等价）
 
 ---
@@ -164,6 +165,6 @@ DoD：
 
 ## 4. 你应该坚持的底线
 
-- 严格模式：不引入“容错猜测”（遇到问题直接报错，用户修远程文件）
+- 错误即失败：不引入“容错猜测”（遇到问题直接报错，用户修远程文件）
 - 数据结构优先：IR 只表达 Proxy/Group/Rule，不把全局配置塞进 IR
 - 输出可复现：稳定性规则必须可测（不是“看起来差不多”）

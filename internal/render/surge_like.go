@@ -99,6 +99,40 @@ func renderSurgeLike(res *compiler.Result, isSurge bool) (Blocks, error) {
 	}
 
 	ruleLines := make([]string, 0, len(res.Rules))
+
+	// ruleset: render as remote references (RULE-SET) instead of expanding into
+	// individual rule lines. This keeps the output small and lets clients fetch
+	// rulesets directly.
+	for _, rs := range res.RulesetRefs {
+		if rs.URL == "" {
+			return Blocks{}, &RenderError{
+				AppError: model.AppError{
+					Code:    "PROFILE_VALIDATE_ERROR",
+					Message: "ruleset URL 不能为空",
+					Stage:   "render",
+					Snippet: rs.Raw,
+				},
+			}
+		}
+		if strings.ContainsAny(rs.URL, "\r\n\x00") || strings.Contains(rs.URL, ",") {
+			return Blocks{}, &RenderError{
+				AppError: model.AppError{
+					Code:    "PROFILE_VALIDATE_ERROR",
+					Message: "ruleset URL 含有 Surge/Shadowrocket 不支持的字符（, 或控制字符）",
+					Stage:   "render",
+					Snippet: rs.URL,
+					Hint:    "use a URL without ','",
+				},
+			}
+		}
+		if rs.Action != "DIRECT" && rs.Action != "REJECT" {
+			if err := surgeGroupNameOK(rs.Action); err != nil {
+				return Blocks{}, err
+			}
+		}
+		ruleLines = append(ruleLines, "RULE-SET,"+rs.URL+","+rs.Action)
+	}
+
 	for _, r := range res.Rules {
 		// Validate action representability for Surge-like formats.
 		if r.Action != "DIRECT" && r.Action != "REJECT" {

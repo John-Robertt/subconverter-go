@@ -13,11 +13,13 @@ const (
 	TargetClash        Target = "clash"
 	TargetSurge        Target = "surge"
 	TargetShadowrocket Target = "shadowrocket"
+	TargetQuanx        Target = "quanx"
 )
 
 type Blocks struct {
 	Proxies string
 	Groups  string
+	Rulesets string // optional: used by targets that support remote ruleset sections (e.g. QuanX)
 	Rules   string
 }
 
@@ -55,6 +57,8 @@ func Render(target Target, res *compiler.Result) (Blocks, error) {
 		return renderSurgeLike(res, true)
 	case TargetShadowrocket:
 		return renderSurgeLike(res, false)
+	case TargetQuanx:
+		return renderQuanx(res)
 	default:
 		return Blocks{}, &RenderError{
 			AppError: model.AppError{

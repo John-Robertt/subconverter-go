@@ -15,6 +15,11 @@ func handleSub(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := setAttachmentHeaders(w, req); err != nil {
+		writeErrorFromErr(w, err)
+		return
+	}
+
 	out, err := runConvert(r.Context(), r, req)
 	if err != nil {
 		writeErrorFromErr(w, err)
@@ -29,6 +34,11 @@ func handleConvert(w http.ResponseWriter, r *http.Request) {
 
 	req, err := parseConvertPOST(r)
 	if err != nil {
+		writeErrorFromErr(w, err)
+		return
+	}
+
+	if err := setAttachmentHeaders(w, req); err != nil {
 		writeErrorFromErr(w, err)
 		return
 	}

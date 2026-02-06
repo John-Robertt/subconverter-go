@@ -15,7 +15,7 @@ func TestEnsureSurgeManagedConfig_InsertDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.HasPrefix(out, "#!MANAGED-CONFIG http://example.com/sub?x=1 interval=86400 strict=false\n") {
+	if !strings.HasPrefix(out, "#!MANAGED-CONFIG http://example.com/sub?x=1 interval=86400\n") {
 		t.Fatalf("managed-config line not inserted, got:\n%s", out)
 	}
 	if !strings.Contains(out, "[General]\n") {
@@ -42,23 +42,23 @@ func TestEnsureSurgeManagedConfig_KeepCRLF(t *testing.T) {
 
 func TestEnsureSurgeManagedConfig_RewriteURL_PreserveParams(t *testing.T) {
 	in := "" +
-		"#!MANAGED-CONFIG http://old/sub?y=2 interval=123 strict=true\n" +
+		"#!MANAGED-CONFIG http://old/sub?y=2 interval=123 foo=bar\n" +
 		"[General]\n"
 
 	out, err := EnsureSurgeManagedConfig(in, "http://new/sub?x=1", "https://example.com/surge.conf")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.HasPrefix(out, "#!MANAGED-CONFIG http://new/sub?x=1 interval=123 strict=true\n") {
+	if !strings.HasPrefix(out, "#!MANAGED-CONFIG http://new/sub?x=1 interval=123 foo=bar\n") {
 		t.Fatalf("managed-config URL not rewritten, got:\n%s", out)
 	}
 }
 
 func TestEnsureSurgeManagedConfig_MultipleLines_Error(t *testing.T) {
 	in := "" +
-		"#!MANAGED-CONFIG http://old/sub interval=1 strict=false\n" +
+		"#!MANAGED-CONFIG http://old/sub interval=1 foo=bar\n" +
 		"[General]\n" +
-		"#!MANAGED-CONFIG http://old2/sub interval=1 strict=false\n"
+		"#!MANAGED-CONFIG http://old2/sub interval=1 foo=bar\n"
 
 	_, err := EnsureSurgeManagedConfig(in, "http://new/sub", "https://example.com/surge.conf")
 	var te *TemplateError
@@ -73,7 +73,7 @@ func TestEnsureSurgeManagedConfig_MultipleLines_Error(t *testing.T) {
 func TestEnsureSurgeManagedConfig_NotFirstNonEmpty_Error(t *testing.T) {
 	in := "" +
 		"[General]\n" +
-		"#!MANAGED-CONFIG http://old/sub interval=1 strict=false\n"
+		"#!MANAGED-CONFIG http://old/sub interval=1 foo=bar\n"
 
 	_, err := EnsureSurgeManagedConfig(in, "http://new/sub", "https://example.com/surge.conf")
 	var te *TemplateError
@@ -99,4 +99,3 @@ func TestEnsureSurgeManagedConfig_MissingURL_Error(t *testing.T) {
 		t.Fatalf("code=%q, want=%q", te.AppError.Code, "TEMPLATE_SECTION_ERROR")
 	}
 }
-

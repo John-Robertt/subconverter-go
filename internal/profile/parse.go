@@ -140,6 +140,7 @@ func ParseProfileYAML(sourceURL string, content string, requiredTarget string) (
 		"clash":        {},
 		"shadowrocket": {},
 		"surge":        {},
+		"quanx":        {},
 	}
 	for k, v := range rp.Template {
 		if _, ok := allowedTargets[k]; !ok {

@@ -4,7 +4,10 @@
 
 核心目标：把“规则语法”锁死在一个地方（解析器），其余模块只处理结构化 `Rule` 列表。
 
-严格模式（唯一模式）：任何规则语法不合法、字段数量不匹配、值无法解析等，必须直接返回 HTTP 错误（错误结构见 `SPEC_HTTP_API.md`）。
+v1 只有一种行为（无额外参数开关）：
+- 任何规则语法不合法、字段数量不匹配、值无法解析等，必须直接返回 HTTP 错误（错误结构见 `SPEC_HTTP_API.md`）。
+- 当解析 **ruleset 文件** 时，遇到“不支持的规则类型（`UNSUPPORTED_RULE_TYPE`）”允许跳过该行继续处理（避免被第三方 ruleset 卡死）。
+- profile inline rule：不支持的类型必须报错（避免用户误写却静默降级）。
 
 ---
 
@@ -100,17 +103,51 @@ DOMAIN-KEYWORD,<keyword>
 IP-CIDR,<cidr>,<action>[,no-resolve]
 ```
 
-ruleset 可缺省 action（但不允许“只有 no-resolve 没有 action”的歧义写法）：
+ruleset 可缺省 action（由 ruleset 指令提供 default action）：
 
 ```
 IP-CIDR,<cidr>
 ```
 
+并且允许在缺省 action 时携带 `no-resolve`：
+
+```
+IP-CIDR,<cidr>,no-resolve
+```
+
 说明：
 - `<cidr>` 必须是合法 CIDR（IPv4）。
-- `no-resolve` 仅允许出现在第 4 个字段，且仅允许用于 `IP-CIDR`。
+- `no-resolve` 仅允许用于 `IP-CIDR` / `IP-CIDR6`：
+  - 完整规则行中为第 4 个字段：`IP-CIDR,<cidr>,<action>,no-resolve`
+  - ruleset 缺省 action 行中为第 3 个字段：`IP-CIDR,<cidr>,no-resolve`
 
-### 4.5 `GEOIP`
+### 4.5 `IP-CIDR6`
+
+完整规则行：
+
+```
+IP-CIDR6,<cidr>,<action>[,no-resolve]
+```
+
+ruleset 可缺省 action：
+
+```
+IP-CIDR6,<cidr>
+```
+
+并且允许在缺省 action 时携带 `no-resolve`：
+
+```
+IP-CIDR6,<cidr>,no-resolve
+```
+
+说明：
+- `<cidr>` 必须是合法 CIDR（IPv6）。
+- `no-resolve` 仅允许用于 `IP-CIDR` / `IP-CIDR6`：
+  - 完整规则行中为第 4 个字段：`IP-CIDR6,<cidr>,<action>,no-resolve`
+  - ruleset 缺省 action 行中为第 3 个字段：`IP-CIDR6,<cidr>,no-resolve`
+
+### 4.6 `GEOIP`
 
 完整规则行：
 
@@ -127,7 +164,41 @@ GEOIP,<cc>
 说明：
 - `<cc>` 为国家/地区代码（建议按 ISO 3166-1 alpha-2 的大写写法；v1 不强制校验集合，但必须非空且不得包含空白/逗号）。
 
-### 4.6 `MATCH`（兜底）
+### 4.7 `PROCESS-NAME`
+
+完整规则行：
+
+```
+PROCESS-NAME,<process>,<action>
+```
+
+ruleset 可缺省 action：
+
+```
+PROCESS-NAME,<process>
+```
+
+说明：
+- `<process>` 必须非空，且不得包含空白/逗号。
+
+### 4.8 `URL-REGEX`
+
+完整规则行：
+
+```
+URL-REGEX,<regex>,<action>
+```
+
+ruleset 可缺省 action：
+
+```
+URL-REGEX,<regex>
+```
+
+说明：
+- v1 不对 `<regex>` 的语义做校验，仅要求非空且不包含逗号（因为 v1 不支持引号/转义）。
+
+### 4.9 `MATCH`（兜底）
 
 完整规则行：
 
@@ -155,11 +226,12 @@ MATCH,<action>
 ## 6. 必须报错的情况（最小集合）
 
 - 规则行字段数量不匹配（例如 `DOMAIN,a` 出现在 inline rule；或 `MATCH,a,b`）
-- 不支持的 `TYPE`（v1 不做“兼容猜测”）
-- `no-resolve` 出现在非 `IP-CIDR` 规则，或出现在错误的位置
-- `IP-CIDR` 的 `<cidr>` 不是合法 CIDR
+- 不支持的 `TYPE`：
+  - ruleset 文件：跳过该行（`UNSUPPORTED_RULE_TYPE`）
+  - inline rule：必须报错
+- `no-resolve` 出现在非 `IP-CIDR` / `IP-CIDR6` 规则，或出现在错误的位置
+- `IP-CIDR` / `IP-CIDR6` 的 `<cidr>` 不是合法 CIDR
 - `MATCH` 出现在 ruleset 文件中
-- ruleset 缺省 action 场景下出现歧义写法：`IP-CIDR,<cidr>,no-resolve`（缺 action）
+- inline rule 场景下出现歧义写法：`IP-CIDR,<cidr>,no-resolve` 或 `IP-CIDR6,<cidr>,no-resolve`（缺 action；inline rule 必须显式 action）
 
 错误响应结构见 `SPEC_HTTP_API.md`；必须尽可能包含 `url/line/snippet/stage=parse_ruleset|compile`。
-

@@ -1,11 +1,15 @@
-# 渲染规范（v1）：Clash / Surge / Shadowrocket
+# 渲染规范（v1）：Clash / Surge / Shadowrocket / Quantumult X
 
 本文档定义：编译阶段产出的“核心中间态”（IR：Proxies/Groups/Rules）如何渲染为各目标客户端可导入的配置文本。
 
 原则：
 - 只覆盖 v1 承诺的最小能力集（SS 节点、`select/url-test` 策略组、Clash classical 规则）。
-- 任何无法表达/不支持的能力必须报错（严格模式）。
-- 模板只提供骨架；服务端只生成三段文本并注入锚点（见《模板锚点与注入规范》）。
+- 目标差异通过“渲染阶段”吸收：同一份 profile 可以生成不同客户端配置（字段/段落语法不同）。
+- ruleset（`profile.ruleset`）对不同 target 的处理：
+  - Clash：展开 ruleset 文件内容为规则行（写入 `rulesBlock`）
+  - Surge/Shadowrocket：输出远程引用行 `RULE-SET,<URL>,<ACTION>`（不展开）
+  - Quantumult X：输出远程引用行到 `[filter_remote]`（不展开）
+- 模板只提供骨架；服务端生成文本块并注入锚点（见《模板锚点与注入规范》）。
 
 本规范参考了本仓库内的 `subconverter/`（C 版本）的主流格式行为，但这里定义的是“可实现且稳定的子集”，不是照搬其全部细节/兼容性分支。
 
@@ -16,7 +20,9 @@
 渲染器接收编译后的结构化数据：
 - `Proxies[]`：仅包含 `type=ss`
 - `Groups[]`：仅包含 `type=select|url-test`
-- `Rules[]`：仅包含 v1 规则类型（`DOMAIN/DOMAIN-SUFFIX/DOMAIN-KEYWORD/IP-CIDR/GEOIP/MATCH`）
+- `Rules[]`：仅包含 v1 规则类型（不同 target 支持矩阵不同）：  
+  `DOMAIN/DOMAIN-SUFFIX/DOMAIN-KEYWORD/IP-CIDR/IP-CIDR6/GEOIP/PROCESS-NAME/URL-REGEX/MATCH`
+- `RulesetRefs[]`：profile 中 `ruleset` 的远程引用信息（`ACTION,URL`），用于输出“远程 ruleset 引用行”（不展开场景）。
 
 并且应已满足《输出稳定性与规范化规范》：
 - 节点已去重、命名唯一、排序稳定
@@ -24,16 +30,20 @@
 
 ---
 
-## 2. 输出：三段注入块（通用）
+## 2. 输出：注入块（通用）
 
-无论目标为何，渲染器都必须生成三段文本块：
+所有 target 都必须生成三段文本块：
 - `proxiesBlock`
 - `groupsBlock`
 - `rulesBlock`
 
+并且当 `target=quanx` 时，还必须额外生成一段：
+- `rulesetsBlock`（写入 `[filter_remote]`）
+
 然后交由模板注入器替换：
 - `#@PROXIES@#`
 - `#@GROUPS@#`
+- `#@RULESETS@#`（仅 QuanX）
 - `#@RULES@#`
 
 模板注入算法与锚点约束见《模板锚点与注入规范》。
@@ -167,7 +177,15 @@ SS plugin（Surge）：
 
 ### 4.4 rulesBlock（写入 `[Rule]` 段）
 
-规则行语法：
+v1 规定 Surge/Shadowrocket 的规则输出包含两部分（顺序必须固定）：
+
+1) ruleset 远程引用行（按 profile.ruleset 顺序）：
+
+```
+RULE-SET,<URL>,<ACTION>
+```
+
+2) inline 规则（来自 profile.rule），语法：
 
 ```
 TYPE,VALUE,ACTION[,no-resolve]
@@ -175,7 +193,7 @@ TYPE,VALUE,ACTION[,no-resolve]
 
 规则类型映射（从 IR 到 Surge）：
 - `MATCH` -> `FINAL`
-- 其它类型原样输出（`DOMAIN/DOMAIN-SUFFIX/DOMAIN-KEYWORD/IP-CIDR/GEOIP`）
+- 其它类型原样输出（`DOMAIN/DOMAIN-SUFFIX/DOMAIN-KEYWORD/IP-CIDR/IP-CIDR6/GEOIP/PROCESS-NAME`）
 
 ---
 
@@ -186,3 +204,79 @@ v1 规定 Shadowrocket 的渲染语法与 Surge 相同（使用 `[Proxy]` / `[Pr
 差异点：
 - 不要求输出 `#!MANAGED-CONFIG`（Shadowrocket 订阅更新机制与 Surge 不同）。
 - 其余 proxies/groups/rules 的行语法与名称约束与 Surge 相同。
+
+---
+
+## 6. 目标：Quantumult X（INI-like）
+
+Quantumult X（简称 QuanX）同样采用 INI-like 段落结构，但节点/策略组/规则的语法与 Surge 系略有不同。
+
+### 6.1 proxiesBlock（写入 `[server_local]` 段）
+
+每个 SS 节点输出为一行（最小集合）：
+
+```
+shadowsocks = <SERVER>:<PORT>, method=<CIPHER>, password=<PASSWORD>, tag=<NAME>
+```
+
+SS plugin（QuanX）：
+- v1 仅支持 `simple-obfs` / `obfs-local`。
+- 当节点携带该 plugin 时追加：
+  - `, obfs=<mode>`
+  - `, obfs-host=<host>`（可选）
+- 其它 plugin：必须报错（`UNSUPPORTED_PLUGIN`）。
+
+名称可表示性（QuanX）：
+- 节点 tag 若包含 `,`，必须用双引号包裹：`tag="a,b"`，并在所有引用处使用同样的带引号名称。
+- 节点名若包含 `"` 则必须报错（无可靠转义规则，避免生成歧义配置）。
+
+### 6.2 groupsBlock（写入 `[policy]` 段）
+
+#### 6.2.1 select -> `static`
+
+```
+static=<GROUP>, <MEMBER_1>, <MEMBER_2>, ...
+```
+
+#### 6.2.2 url-test -> `url-latency-benchmark`
+
+```
+url-latency-benchmark=<GROUP>, <MEMBER_1>, <MEMBER_2>, ..., check-interval=<SEC>[, tolerance=<MS>]
+```
+
+成员允许：
+- 节点 tag（按名称规则可能带引号）
+- 其他策略组名
+- 内置 action 映射：
+  - `DIRECT` -> `direct`
+  - `REJECT` -> `reject`
+
+### 6.3 rulesetsBlock（写入 `[filter_remote]` 段）
+
+QuanX 支持在 `[filter_remote]` 中声明远程规则集，并通过 `force-policy` 绑定策略。
+
+每个 ruleset 输出为一行：
+
+```
+<URL>, tag=<TAG>, force-policy=<POLICY>, enabled=true
+```
+
+约束（v1）：
+- `<POLICY>`：
+  - `DIRECT` -> `direct`
+  - `REJECT` -> `reject`
+  - 其它为策略组名
+- `<TAG>`：必须唯一。若多个 ruleset 共享同一 action，可使用 `action-2/action-3...` 形式追加后缀以去重（确定性生成）。
+
+### 6.4 rulesBlock（写入 `[filter_local]` 段）
+
+规则行语法：
+
+```
+TYPE,VALUE,ACTION[,no-resolve]
+```
+
+映射约束（v1）：
+- `MATCH` -> `FINAL`（两字段：`FINAL,<ACTION>`）
+- `IP-CIDR6` -> `IP6-CIDR`
+- `DIRECT` -> `direct`；`REJECT` -> `reject`

@@ -2,7 +2,7 @@
 
 本文档定义 profile（配置描述文件）的**语法与语义**。profile 的目标是：用尽可能接近 Rules.ini 的“指令列表”写法，描述如何把“订阅节点”编译为目标客户端的配置文件。
 
-本项目采用“严格模式”（唯一模式）：profile 任何语法/语义错误都必须导致 HTTP 返回错误。
+本项目没有“宽松修复”开关：profile 任何语法/语义错误都必须导致 HTTP 返回错误。
 
 ---
 
@@ -17,6 +17,7 @@ template:
   clash: "https://example.com/base_clash.yaml"
   shadowrocket: "https://example.com/base_sr.conf"
   surge: "https://example.com/base_surge.conf"
+  quanx: "https://example.com/base_quanx.conf"
 
 public_base_url: "https://sub-api.example.com/sub"
 
@@ -46,7 +47,7 @@ rule:
 ### 2.2 `template`（必填）
 
 - 类型：map
-- 支持的 key：`clash`、`shadowrocket`、`surge`（v1）
+- 支持的 key：`clash`、`shadowrocket`、`surge`、`quanx`（v1）
 - value：模板的 URL（字符串）
 
 约束：
@@ -69,7 +70,7 @@ rule:
 - 类型：list[string]
 - 语义：按顺序定义策略组（组会被编译进 Core IR，再由各 target renderer 生成对应语法）。
 
-注意：本字段的每一项是“指令字符串”，语法与 Rules.ini 的 `custom_proxy_group=` 类似，但 v1 只支持一个**严格子集**（见第 3 节）。
+注意：本字段的每一项是“指令字符串”，语法与 Rules.ini 的 `custom_proxy_group=` 类似，但 v1 只支持一个**明确子集**（见第 3 节）。
 关于策略组/成员的最终排序、`@all` 展开顺序等稳定性要求，见《输出稳定性与规范化规范》。
 
 ### 2.5 `ruleset`（可选）
@@ -88,8 +89,14 @@ ACTION,URL
 - `URL`：远程规则集 URL（http/https）
 
 语义：
-- 服务端会拉取 URL 内容并解析为规则列表，然后在最终规则输出中按 `ruleset` 的顺序展开插入。
-- 规则集文件内部每行按“Clash classical 规则行”解析（见 `SPEC_RULES_CLASH_CLASSICAL.md`）。如果规则行缺省 ACTION，则使用该 `ruleset` 指令指定的 `ACTION` 作为默认值。
+- `ruleset` 用于“远程规则集引用”（ACTION 绑定 + 顺序控制），不同 target 的展开策略不同：
+  - **Clash**：服务端会拉取 URL 内容并解析为规则列表，然后在最终规则输出中按 `ruleset` 的顺序展开插入。
+    - 规则集文件内部每行按“Clash classical 规则行”解析（见 `SPEC_RULES_CLASH_CLASSICAL.md`）。如果规则行缺省 ACTION，则使用该 `ruleset` 指令指定的 `ACTION` 作为默认值。
+  - **Surge / Shadowrocket**：不展开 ruleset 内容；最终配置中输出远程引用行（例如 `RULE-SET,<URL>,<ACTION>`），由客户端自行拉取。
+  - **Quantumult X**：不展开 ruleset 内容；最终配置中输出到 `[filter_remote]` 的远程引用行，并通过 `force-policy` 绑定策略组。
+
+约束（v1）：
+- 无论是否展开，`ACTION` 必须是 `DIRECT/REJECT` 或已定义的策略组名；否则必须报错（引用不存在）。
 
 ### 2.6 `rule`（可选，但强烈推荐）
 

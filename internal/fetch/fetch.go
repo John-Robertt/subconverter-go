@@ -49,7 +49,9 @@ func (k Kind) defaultMaxBytes() int64 {
 	case KindTemplate:
 		return 2 * 1024 * 1024
 	case KindRuleset:
-		return 5 * 1024 * 1024
+		// Some popular rulesets (e.g. adblock lists) can exceed 5 MiB.
+		// Keep a hard limit, but allow a bit more by default.
+		return 10 * 1024 * 1024
 	default:
 		return 1 * 1024 * 1024
 	}
@@ -148,7 +150,7 @@ func FetchTextWithOptions(ctx context.Context, kind Kind, rawURL string, opt Opt
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		// Should be rare after url.Parse succeeded, but keep it strict.
+		// Should be rare after url.Parse succeeded, but keep the error explicit.
 		return "", &FetchError{
 			Status: http.StatusBadRequest,
 			AppError: model.AppError{
