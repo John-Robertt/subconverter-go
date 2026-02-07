@@ -1,0 +1,3 @@
+ss://YWVzLTEyOC1nY206cGFzc3dvcmQ@hk.example.com:8388#Example-HK
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpwYXNzMTIz@sg.example.com:8388#Example-SG
+ss://YWVzLTI1Ni1nY206cGFzc3cwcmQ@us.example.com:8388#Example-US

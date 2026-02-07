@@ -1,0 +1,5 @@
+# Proxy domains (no action in line; default ACTION from profile ruleset will be applied)
+DOMAIN-SUFFIX,google.com
+DOMAIN-SUFFIX,github.com
+DOMAIN-SUFFIX,youtube.com
+

@@ -1,0 +1,24 @@
+version: 1
+
+template:
+  clash: "http://127.0.0.1:8000/materials/templates/clash.yaml"
+  shadowrocket: "http://127.0.0.1:8000/materials/templates/shadowrocket.conf"
+  surge: "http://127.0.0.1:8000/materials/templates/surge.conf"
+
+public_base_url: "http://127.0.0.1:25500/sub"
+
+custom_proxy_group:
+  # 主选择组：包含测速组 + 所有节点 + 直连
+  - "PROXY`select`[]AUTO[]@all[]DIRECT"
+  # 测速组：从节点名称中筛选（v1 子集：url-test）
+  - "AUTO`url-test`(Example|HK|SG|US)`http://www.gstatic.com/generate_204`300`50"
+
+ruleset:
+  # ruleset 行语法：ACTION,URL
+  - "DIRECT,http://127.0.0.1:8000/materials/rulesets/LAN.list"
+  - "REJECT,http://127.0.0.1:8000/materials/rulesets/BanAD.list"
+  - "PROXY,http://127.0.0.1:8000/materials/rulesets/Proxy.list"
+
+rule:
+  # 兜底（必须有）：MATCH,ACTION
+  - "MATCH,PROXY"
