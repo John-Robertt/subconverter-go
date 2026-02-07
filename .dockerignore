@@ -1,0 +1,11 @@
+.git
+.github
+
+# Local outputs / secrets
+out
+SS.txt
+subconverter-go
+
+# C reference implementation is not part of the Go service; keep build context small.
+subconverter/
+
