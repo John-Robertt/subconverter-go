@@ -44,6 +44,28 @@ curl -fsS http://127.0.0.1:25500/healthz
 http://127.0.0.1:25500/
 ```
 
+## Docker 运行（推荐部署）
+
+镜像发布在 GitHub Container Registry（GHCR）：
+
+- `ghcr.io/john-robertt/subconverter-go:latest`
+- `ghcr.io/john-robertt/subconverter-go:vX.Y.Z`
+
+直接运行：
+
+```bash
+docker run --rm -p 25500:25500 ghcr.io/john-robertt/subconverter-go:latest
+```
+
+容器内默认监听 `0.0.0.0:25500`（可用 `-listen` 参数覆盖）。
+
+## 预编译二进制（GitHub Releases）
+
+每次 push tag（`v*`）会自动生成 GitHub Release，包含：
+
+- Linux / macOS（darwin）/ Windows 的 `amd64`、`arm64` 二进制包
+- 每个产物的 SHA256 校验文件（`*_SHA256SUMS.txt`）
+
 ## 使用方式
 
 ### 1) 输出配置文件（mode=config）
