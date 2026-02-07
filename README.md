@@ -38,6 +38,12 @@ go build -o subconverter-go ./cmd/subconverter-go
 curl -fsS http://127.0.0.1:25500/healthz
 ```
 
+可选：查看内置指标（Prometheus text format，最小集合）：
+
+```bash
+curl -fsS http://127.0.0.1:25500/metrics
+```
+
 可选：打开内置 UI（生成订阅转换链接）：
 
 ```text
@@ -191,6 +197,8 @@ rules:
 - `code`：错误码（如 `PROFILE_PARSE_ERROR`、`TEMPLATE_ANCHOR_MISSING`）
 - `stage`：出错阶段（如 `parse_profile`、`validate_template`）
 - `url/line/snippet/hint`：定位信息（如果适用）
+
+同时服务端会输出最小访问日志（不包含 query string，避免泄露 sub/profile 里的 token）。
 
 见：`docs/spec/SPEC_HTTP_API.md`
 

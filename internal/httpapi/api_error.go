@@ -54,12 +54,14 @@ func writeErrorFromErr(w http.ResponseWriter, err error) {
 
 	var ae *APIError
 	if errors.As(err, &ae) {
+		metricsIncAppError(ae.AppError.Stage, ae.AppError.Code)
 		WriteError(w, ae.Status, ae.AppError)
 		return
 	}
 
 	var fe *fetch.FetchError
 	if errors.As(err, &fe) {
+		metricsIncAppError(fe.AppError.Stage, fe.AppError.Code)
 		WriteError(w, fe.Status, fe.AppError)
 		return
 	}
@@ -67,39 +69,46 @@ func writeErrorFromErr(w http.ResponseWriter, err error) {
 	// Parse/compile/render/template errors are user content errors => 422.
 	var se *ss.ParseError
 	if errors.As(err, &se) {
+		metricsIncAppError(se.AppError.Stage, se.AppError.Code)
 		WriteError(w, http.StatusUnprocessableEntity, se.AppError)
 		return
 	}
 
 	var pe *profile.ParseError
 	if errors.As(err, &pe) {
+		metricsIncAppError(pe.AppError.Stage, pe.AppError.Code)
 		WriteError(w, http.StatusUnprocessableEntity, pe.AppError)
 		return
 	}
 
 	var ce *compiler.CompileError
 	if errors.As(err, &ce) {
+		metricsIncAppError(ce.AppError.Stage, ce.AppError.Code)
 		WriteError(w, http.StatusUnprocessableEntity, ce.AppError)
 		return
 	}
 
 	var re *render.RenderError
 	if errors.As(err, &re) {
+		metricsIncAppError(re.AppError.Stage, re.AppError.Code)
 		WriteError(w, http.StatusUnprocessableEntity, re.AppError)
 		return
 	}
 
 	var te *template.TemplateError
 	if errors.As(err, &te) {
+		metricsIncAppError(te.AppError.Stage, te.AppError.Code)
 		WriteError(w, http.StatusUnprocessableEntity, te.AppError)
 		return
 	}
 
 	// Fallback: internal bug.
-	WriteError(w, http.StatusInternalServerError, model.AppError{
+	app := model.AppError{
 		Code:    "INTERNAL_ERROR",
 		Message: "服务端内部错误",
 		Stage:   "internal",
 		Hint:    err.Error(),
-	})
+	}
+	metricsIncAppError(app.Stage, app.Code)
+	WriteError(w, http.StatusInternalServerError, app)
 }

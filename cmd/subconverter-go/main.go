@@ -15,7 +15,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              *listen,
-		Handler:           httpapi.NewMux(),
+		Handler:           httpapi.NewHandler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/John-Robertt/subconverter-go/internal/compiler"
@@ -23,22 +24,21 @@ import (
 )
 
 type convertRequest struct {
-	Mode      string
-	Target    render.Target
-	Subs      []string
-	Profile   string
-	FileName  string // optional: output attachment file base name (without path)
-	Encode    string // only for mode=list: "base64" | "raw"
-	isFromGET bool   // used for error hinting; not part of API
+	Mode     string
+	Target   render.Target
+	Subs     []string
+	Profile  string
+	FileName string // optional: output attachment file base name (without path)
+	Encode   string // only for mode=list: "base64" | "raw"
 }
 
 type convertRequestJSON struct {
-	Mode    string   `json:"mode"`
-	Target  string   `json:"target"`
-	Subs    []string `json:"subs"`
-	Profile string   `json:"profile"`
-	FileName string  `json:"fileName"`
-	Encode  string   `json:"encode"`
+	Mode     string   `json:"mode"`
+	Target   string   `json:"target"`
+	Subs     []string `json:"subs"`
+	Profile  string   `json:"profile"`
+	FileName string   `json:"fileName"`
+	Encode   string   `json:"encode"`
 }
 
 func runConvert(ctx context.Context, r *http.Request, req convertRequest) (string, error) {
@@ -46,13 +46,13 @@ func runConvert(ctx context.Context, r *http.Request, req convertRequest) (strin
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	subs, err := fetchAndParseSubs(ctx, req.Subs)
-	if err != nil {
-		return "", err
-	}
-
 	switch req.Mode {
 	case "list":
+		subs, err := fetchAndParseSubs(ctx, req.Subs)
+		if err != nil {
+			return "", err
+		}
+
 		proxies, err := compiler.NormalizeSubscriptionProxies(subs)
 		if err != nil {
 			return "", err
@@ -76,10 +76,26 @@ func runConvert(ctx context.Context, r *http.Request, req convertRequest) (strin
 			return "", requestError("INVALID_ARGUMENT", "不支持的 encode（仅支持 base64/raw）", encode)
 		}
 	case "config":
-		prof, err := fetchAndParseProfile(ctx, req.Profile, string(req.Target))
+		type profResult struct {
+			prof *profile.Spec
+			err  error
+		}
+		profCh := make(chan profResult, 1)
+		go func() {
+			p, err := fetchAndParseProfile(ctx, req.Profile, string(req.Target))
+			profCh <- profResult{prof: p, err: err}
+		}()
+
+		subs, err := fetchAndParseSubs(ctx, req.Subs)
 		if err != nil {
 			return "", err
 		}
+
+		pr := <-profCh
+		if pr.err != nil {
+			return "", pr.err
+		}
+		prof := pr.prof
 
 		res, err := compiler.Compile(subs, prof)
 		if err != nil {
@@ -123,22 +139,90 @@ func runConvert(ctx context.Context, r *http.Request, req convertRequest) (strin
 }
 
 func fetchAndParseSubs(ctx context.Context, subURLs []string) ([]model.Proxy, error) {
-	out := make([]model.Proxy, 0)
+	// Fast fail: validate and trim.
+	urls := make([]string, 0, len(subURLs))
 	for _, raw := range subURLs {
 		u := strings.TrimSpace(raw)
 		if u == "" {
 			return nil, requestError("INVALID_ARGUMENT", "sub 不能为空", "")
 		}
-		text, err := fetch.FetchText(ctx, fetch.KindSubscription, u)
-		if err != nil {
-			return nil, err
-		}
-		proxies, err := ss.ParseSubscriptionText(u, text)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, proxies...)
+		urls = append(urls, u)
 	}
+
+	// Dedup within the same request: identical URLs are fetched once.
+	// This does not change the compiled result because the compiler will
+	// deduplicate proxies by semantic key; repeating the same URL is redundant.
+	unique := make([]string, 0, len(urls))
+	seen := make(map[string]struct{}, len(urls))
+	for _, u := range urls {
+		if _, ok := seen[u]; ok {
+			continue
+		}
+		seen[u] = struct{}{}
+		unique = append(unique, u)
+	}
+
+	// Fetch+parse concurrently, but consume results in the deterministic
+	// (first-seen) URL order to keep error semantics intuitive.
+	type result struct {
+		proxies []model.Proxy
+		err     error
+	}
+	results := make([]result, len(unique))
+	done := make([]chan struct{}, len(unique))
+	for i := range done {
+		done[i] = make(chan struct{})
+	}
+
+	// Limit concurrency to avoid hammering upstreams.
+	limit := 4
+	if len(unique) < limit {
+		limit = len(unique)
+	}
+	sem := make(chan struct{}, limit)
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	for i, u := range unique {
+		i, u := i, u
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer close(done[i])
+
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			text, err := fetch.FetchText(ctx, fetch.KindSubscription, u)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			proxies, err := ss.ParseSubscriptionText(u, text)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			results[i].proxies = proxies
+		}()
+	}
+
+	out := make([]model.Proxy, 0)
+	for i := range unique {
+		<-done[i]
+		if results[i].err != nil {
+			// Stop remaining fetches ASAP; preserve stable "first failing URL"
+			// semantics (based on the deterministic URL order above).
+			cancel()
+			wg.Wait()
+			return nil, results[i].err
+		}
+		out = append(out, results[i].proxies...)
+	}
+	wg.Wait()
+
 	if len(out) == 0 {
 		return nil, &compiler.CompileError{
 			AppError: model.AppError{
@@ -360,7 +444,7 @@ func parseConvertGET(r *http.Request) (convertRequest, error) {
 		if err != nil {
 			return convertRequest{}, err
 		}
-		return convertRequest{Mode: "list", Subs: subs2, Encode: encode, FileName: fileName, isFromGET: true}, nil
+		return convertRequest{Mode: "list", Subs: subs2, Encode: encode, FileName: fileName}, nil
 	}
 
 	// mode=config
@@ -388,12 +472,11 @@ func parseConvertGET(r *http.Request) (convertRequest, error) {
 		return convertRequest{}, err
 	}
 	return convertRequest{
-		Mode:      "config",
-		Target:    target,
-		Subs:      subs2,
-		Profile:   profileURL,
-		FileName:  fileName,
-		isFromGET: true,
+		Mode:     "config",
+		Target:   target,
+		Subs:     subs2,
+		Profile:  profileURL,
+		FileName: fileName,
 	}, nil
 }
 
