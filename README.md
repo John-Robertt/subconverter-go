@@ -32,6 +32,15 @@ go build -o subconverter-go ./cmd/subconverter-go
 ./subconverter-go -listen 127.0.0.1:25500
 ```
 
+可选：调整超时边界（示例）：
+
+```bash
+./subconverter-go \
+  -convert-timeout 60s \
+  -fetch-timeout 15s \
+  -shutdown-timeout 10s
+```
+
 3) 访问：
 
 ```bash
@@ -224,6 +233,12 @@ rules:
 
 ```bash
 go test ./...
+```
+
+可选：跑 fuzz（示例，30 秒）：
+
+```bash
+go test ./internal/sub/ss -fuzz=FuzzParseSubscriptionText -fuzztime=30s
 ```
 
 可选：放一个真实订阅到仓库根目录 `SS.txt`（已在 `.gitignore` 中忽略），然后：

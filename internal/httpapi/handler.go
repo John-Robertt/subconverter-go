@@ -10,7 +10,11 @@ import (
 //
 // Tests can still use NewMux directly to avoid noisy logs unless needed.
 func NewHandler() http.Handler {
-	return withObservability(NewMux())
+	return NewHandlerWithOptions(Options{})
+}
+
+func NewHandlerWithOptions(opt Options) http.Handler {
+	return withObservability(NewMuxWithOptions(opt))
 }
 
 type statusWriter struct {

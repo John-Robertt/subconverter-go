@@ -220,4 +220,3 @@ func validateIPv6CIDR(s string) error {
 	}
 	return nil
 }
-

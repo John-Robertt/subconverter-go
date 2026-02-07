@@ -10,7 +10,8 @@ import (
 const managedConfigPrefix = "#!MANAGED-CONFIG"
 
 // EnsureSurgeManagedConfig ensures the first non-empty line is:
-//   #!MANAGED-CONFIG <currentConvertURL> interval=86400
+//
+//	#!MANAGED-CONFIG <currentConvertURL> interval=86400
 //
 // Rules are defined in docs/spec/SPEC_TEMPLATE_ANCHORS.md.
 func EnsureSurgeManagedConfig(text string, currentConvertURL string, templateURL string) (string, error) {

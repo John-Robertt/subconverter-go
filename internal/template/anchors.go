@@ -9,11 +9,11 @@ import (
 )
 
 const (
-	AnchorProxies = "#@PROXIES@#"
-	AnchorGroups  = "#@GROUPS@#"
-	AnchorRulesets = "#@RULESETS@#"
+	AnchorProxies       = "#@PROXIES@#"
+	AnchorGroups        = "#@GROUPS@#"
+	AnchorRulesets      = "#@RULESETS@#"
 	AnchorRuleProviders = "#@RULE_PROVIDERS@#"
-	AnchorRules   = "#@RULES@#"
+	AnchorRules         = "#@RULES@#"
 )
 
 type AnchorOptions struct {
@@ -66,11 +66,11 @@ func InjectAnchors(templateText string, blocks render.Blocks, opt AnchorOptions)
 }
 
 type anchorPos struct {
-	proxiesLine int
-	groupsLine  int
+	proxiesLine       int
+	groupsLine        int
 	ruleProvidersLine int
-	rulesetsLine int
-	rulesLine   int
+	rulesetsLine      int
+	rulesLine         int
 }
 
 func findAndValidateAnchors(lines []string, target render.Target, templateURL string) (anchorPos, error) {

@@ -41,14 +41,16 @@ type convertRequestJSON struct {
 	Encode   string   `json:"encode"`
 }
 
-func runConvert(ctx context.Context, r *http.Request, req convertRequest) (string, error) {
+func runConvert(ctx context.Context, r *http.Request, req convertRequest, opt Options) (string, error) {
+	opt = opt.withDefaults()
+
 	// Keep a hard upper bound so handlers don't hang forever if upstream misbehaves.
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, opt.ConvertTimeout)
 	defer cancel()
 
 	switch req.Mode {
 	case "list":
-		subs, err := fetchAndParseSubs(ctx, req.Subs)
+		subs, err := fetchAndParseSubs(ctx, req.Subs, opt.FetchTimeout)
 		if err != nil {
 			return "", err
 		}
@@ -82,11 +84,11 @@ func runConvert(ctx context.Context, r *http.Request, req convertRequest) (strin
 		}
 		profCh := make(chan profResult, 1)
 		go func() {
-			p, err := fetchAndParseProfile(ctx, req.Profile, string(req.Target))
+			p, err := fetchAndParseProfile(ctx, req.Profile, string(req.Target), opt.FetchTimeout)
 			profCh <- profResult{prof: p, err: err}
 		}()
 
-		subs, err := fetchAndParseSubs(ctx, req.Subs)
+		subs, err := fetchAndParseSubs(ctx, req.Subs, opt.FetchTimeout)
 		if err != nil {
 			return "", err
 		}
@@ -108,7 +110,7 @@ func runConvert(ctx context.Context, r *http.Request, req convertRequest) (strin
 		}
 
 		templateURL := prof.Template[string(req.Target)]
-		templateText, err := fetch.FetchText(ctx, fetch.KindTemplate, templateURL)
+		templateText, err := fetch.FetchTextWithOptions(ctx, fetch.KindTemplate, templateURL, fetch.Options{Timeout: opt.FetchTimeout})
 		if err != nil {
 			return "", err
 		}
@@ -138,7 +140,7 @@ func runConvert(ctx context.Context, r *http.Request, req convertRequest) (strin
 	}
 }
 
-func fetchAndParseSubs(ctx context.Context, subURLs []string) ([]model.Proxy, error) {
+func fetchAndParseSubs(ctx context.Context, subURLs []string, fetchTimeout time.Duration) ([]model.Proxy, error) {
 	// Fast fail: validate and trim.
 	urls := make([]string, 0, len(subURLs))
 	for _, raw := range subURLs {
@@ -195,7 +197,7 @@ func fetchAndParseSubs(ctx context.Context, subURLs []string) ([]model.Proxy, er
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			text, err := fetch.FetchText(ctx, fetch.KindSubscription, u)
+			text, err := fetch.FetchTextWithOptions(ctx, fetch.KindSubscription, u, fetch.Options{Timeout: fetchTimeout})
 			if err != nil {
 				results[i].err = err
 				return
@@ -235,12 +237,12 @@ func fetchAndParseSubs(ctx context.Context, subURLs []string) ([]model.Proxy, er
 	return out, nil
 }
 
-func fetchAndParseProfile(ctx context.Context, profileURL string, requiredTarget string) (*profile.Spec, error) {
+func fetchAndParseProfile(ctx context.Context, profileURL string, requiredTarget string, fetchTimeout time.Duration) (*profile.Spec, error) {
 	profileURL = strings.TrimSpace(profileURL)
 	if profileURL == "" {
 		return nil, requestError("INVALID_ARGUMENT", "profile 不能为空", "")
 	}
-	text, err := fetch.FetchText(ctx, fetch.KindProfile, profileURL)
+	text, err := fetch.FetchTextWithOptions(ctx, fetch.KindProfile, profileURL, fetch.Options{Timeout: fetchTimeout})
 	if err != nil {
 		return nil, err
 	}

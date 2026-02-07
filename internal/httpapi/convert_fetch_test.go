@@ -19,7 +19,7 @@ func TestFetchAndParseSubs_DedupURL(t *testing.T) {
 	defer ts.Close()
 
 	url := ts.URL
-	got, err := fetchAndParseSubs(context.Background(), []string{url, url, url})
+	got, err := fetchAndParseSubs(context.Background(), []string{url, url, url}, 0)
 	if err != nil {
 		t.Fatalf("fetchAndParseSubs error: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestFetchAndParseSubs_ConcurrentFetch(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := fetchAndParseSubs(context.Background(), []string{ts.URL + "/a", ts.URL + "/b"})
+		_, err := fetchAndParseSubs(context.Background(), []string{ts.URL + "/a", ts.URL + "/b"}, 0)
 		done <- err
 	}()
 

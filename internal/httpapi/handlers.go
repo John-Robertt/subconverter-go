@@ -8,7 +8,11 @@ func handleHealthz(w http.ResponseWriter, r *http.Request) {
 	WriteText(w, http.StatusOK, "ok\n")
 }
 
-func handleSub(w http.ResponseWriter, r *http.Request) {
+type convertHandler struct {
+	opt Options
+}
+
+func (h convertHandler) handleSub(w http.ResponseWriter, r *http.Request) {
 	req, err := parseConvertGET(r)
 	if err != nil {
 		writeErrorFromErr(w, err)
@@ -20,7 +24,7 @@ func handleSub(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out, err := runConvert(r.Context(), r, req)
+	out, err := runConvert(r.Context(), r, req, h.opt)
 	if err != nil {
 		writeErrorFromErr(w, err)
 		return
@@ -28,7 +32,7 @@ func handleSub(w http.ResponseWriter, r *http.Request) {
 	WriteText(w, http.StatusOK, out)
 }
 
-func handleConvert(w http.ResponseWriter, r *http.Request) {
+func (h convertHandler) handleConvert(w http.ResponseWriter, r *http.Request) {
 	// Prevent abusive payload sizes.
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20 /* 1 MiB */)
 
@@ -43,7 +47,7 @@ func handleConvert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out, err := runConvert(r.Context(), r, req)
+	out, err := runConvert(r.Context(), r, req, h.opt)
 	if err != nil {
 		writeErrorFromErr(w, err)
 		return

@@ -199,19 +199,19 @@ func newMaterialsUpstream(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/materials/rulesets/Proxy.list", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(proxy)
 	})
-		mux.HandleFunc("/materials/profile.yaml", func(w http.ResponseWriter, r *http.Request) {
-			// Generate URLs pointing back to this upstream server.
-			base := "http://" + r.Host
-			profileYAML := "" +
-				"version: 1\n\n" +
-				"template:\n" +
-				"  clash: \"" + base + "/materials/templates/clash.yaml\"\n" +
-				"  shadowrocket: \"" + base + "/materials/templates/shadowrocket.conf\"\n" +
-				"  surge: \"" + base + "/materials/templates/surge.conf\"\n" +
-				"  quanx: \"" + base + "/materials/templates/quanx.conf\"\n\n" +
-				"public_base_url: \"https://public.example.com/sub\"\n\n" +
-				"custom_proxy_group:\n" +
-				"  - \"PROXY`select`[]AUTO[]@all[]DIRECT\"\n" +
+	mux.HandleFunc("/materials/profile.yaml", func(w http.ResponseWriter, r *http.Request) {
+		// Generate URLs pointing back to this upstream server.
+		base := "http://" + r.Host
+		profileYAML := "" +
+			"version: 1\n\n" +
+			"template:\n" +
+			"  clash: \"" + base + "/materials/templates/clash.yaml\"\n" +
+			"  shadowrocket: \"" + base + "/materials/templates/shadowrocket.conf\"\n" +
+			"  surge: \"" + base + "/materials/templates/surge.conf\"\n" +
+			"  quanx: \"" + base + "/materials/templates/quanx.conf\"\n\n" +
+			"public_base_url: \"https://public.example.com/sub\"\n\n" +
+			"custom_proxy_group:\n" +
+			"  - \"PROXY`select`[]AUTO[]@all[]DIRECT\"\n" +
 			"  - \"AUTO`url-test`(Example|HK|SG|US)`http://www.gstatic.com/generate_204`300`50\"\n\n" +
 			"ruleset:\n" +
 			"  - \"DIRECT," + base + "/materials/rulesets/LAN.list\"\n" +
