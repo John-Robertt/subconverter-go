@@ -141,3 +141,25 @@ func TestRender_Quanx_TagCommaQuotedAndRuleTypeMapping(t *testing.T) {
 		t.Fatalf("MATCH should map to FINAL and DIRECT->direct, got:\n%s", blocks.Rules)
 	}
 }
+
+func TestRender_Quanx_IPv6ServerBracketed(t *testing.T) {
+	res := &compiler.Result{
+		Proxies: []model.Proxy{
+			{Type: "ss", Name: "v6", Server: "2001:db8::1", Port: 8388, Cipher: "aes-128-gcm", Password: "pass"},
+		},
+		Groups: []model.Group{
+			{Name: "PROXY", Type: "select", Members: []string{"v6"}},
+		},
+		Rules: []model.Rule{
+			{Type: "MATCH", Action: "PROXY"},
+		},
+	}
+
+	blocks, err := Render(TargetQuanx, res)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(blocks.Proxies, "shadowsocks = [2001:db8::1]:8388") {
+		t.Fatalf("IPv6 server should be bracketed, got:\n%s", blocks.Proxies)
+	}
+}

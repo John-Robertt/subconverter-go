@@ -263,6 +263,9 @@ Quantumult X（简称 QuanX）同样采用 INI-like 段落结构，但节点/策
 shadowsocks = <SERVER>:<PORT>, method=<CIPHER>, password=<PASSWORD>, tag=<NAME>
 ```
 
+IPv6 约束（QuanX）：
+- 若 `<SERVER>` 为 IPv6 字面量，必须输出为 `[<IPv6>]:<PORT>`（用 `[]` 包裹 host，避免 `:` 歧义）。
+
 SS plugin（QuanX）：
 - v1 仅支持 `simple-obfs` / `obfs-local`。
 - 当节点携带该 plugin 时追加：

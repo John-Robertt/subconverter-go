@@ -34,7 +34,7 @@ func renderQuanx(res *compiler.Result) (Blocks, error) {
 		}
 
 		tag := proxyTagRep[p.Name]
-		line := fmt.Sprintf("shadowsocks = %s:%d, method=%s, password=%s, tag=%s", p.Server, p.Port, strings.ToLower(p.Cipher), p.Password, tag)
+		line := fmt.Sprintf("shadowsocks = %s, method=%s, password=%s, tag=%s", quanxServerPort(p.Server, p.Port), strings.ToLower(p.Cipher), p.Password, tag)
 		if p.PluginName != "" {
 			_, mode, host, err := parseSSObfsPlugin(p)
 			if err != nil {
@@ -137,11 +137,21 @@ func renderQuanx(res *compiler.Result) (Blocks, error) {
 	}
 
 	return Blocks{
-		Proxies: strings.Join(proxyLines, "\n"),
-		Groups:  strings.Join(groupLines, "\n"),
+		Proxies:  strings.Join(proxyLines, "\n"),
+		Groups:   strings.Join(groupLines, "\n"),
 		Rulesets: strings.Join(rulesetLines, "\n"),
-		Rules:   strings.Join(ruleLines, "\n"),
+		Rules:    strings.Join(ruleLines, "\n"),
 	}, nil
+}
+
+func quanxServerPort(server string, port int) string {
+	host := strings.TrimSpace(server)
+	// QuanX syntax uses "<server>:<port>". IPv6 literals contain ':' and must be
+	// wrapped in "[]" to avoid ambiguity.
+	if strings.Contains(host, ":") && !(strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]")) {
+		host = "[" + host + "]"
+	}
+	return fmt.Sprintf("%s:%d", host, port)
 }
 
 func quanxTag(tag string) (string, error) {
