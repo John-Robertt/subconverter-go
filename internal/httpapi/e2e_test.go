@@ -352,14 +352,12 @@ func expectedSurgeLikeBody(profileURL string) string {
 	lan := base + "/materials/rulesets/LAN.list"
 	banad := base + "/materials/rulesets/BanAD.list"
 	proxy := base + "/materials/rulesets/Proxy.list"
-	// Same as shadowrocket materials template, but without the extra trailing blank line.
+	// Surge 不允许在 [Proxy] 段定义内部策略名（DIRECT/REJECT）。
 	return "" +
 		"[General]\n" +
 		"loglevel = notify\n" +
 		"\n" +
 		"[Proxy]\n" +
-		"DIRECT = direct\n" +
-		"REJECT = reject\n" +
 		"Example-HK = ss, hk.example.com, 8388, encrypt-method=aes-128-gcm, password=password\n" +
 		"Example-SG = ss, sg.example.com, 8388, encrypt-method=chacha20-ietf-poly1305, password=pass123\n" +
 		"Example-US = ss, us.example.com, 8388, encrypt-method=aes-256-gcm, password=passw0rd\n" +

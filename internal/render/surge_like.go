@@ -10,10 +10,17 @@ import (
 )
 
 func renderSurgeLike(res *compiler.Result, isSurge bool) (Blocks, error) {
-	proxyLines := make([]string, 0, len(res.Proxies)+2)
-	// Built-ins required by spec.
-	proxyLines = append(proxyLines, "DIRECT = direct")
-	proxyLines = append(proxyLines, "REJECT = reject")
+	extraBuiltins := 0
+	if !isSurge {
+		// Surge 内置 DIRECT/REJECT；在 [Proxy] 段重复声明会触发 “策略不可以使用内部策略名”。
+		// Shadowrocket 仍允许（且部分模板/用户习惯依赖该写法），所以仅对非 Surge 目标输出。
+		extraBuiltins = 2
+	}
+	proxyLines := make([]string, 0, len(res.Proxies)+extraBuiltins)
+	if !isSurge {
+		proxyLines = append(proxyLines, "DIRECT = direct")
+		proxyLines = append(proxyLines, "REJECT = reject")
+	}
 
 	// Precompute name representation for proxies to keep references consistent.
 	proxyNameRep := make(map[string]string, len(res.Proxies))

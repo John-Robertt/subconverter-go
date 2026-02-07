@@ -161,7 +161,13 @@ Surge/Shadowrocket 采用逗号分隔的行语法，渲染时必须额外关注�
 
 #### 4.2.1 内置项
 
-渲染器必须在 `[Proxy]` 段内提供至少两个内置项（用于规则与组引用）：
+`DIRECT`/`REJECT` 是 Surge/Shadowrocket 规则与策略组中常用的内置策略名。
+
+兼容性约束：
+- **Surge**：不允许在 `[Proxy]` 段中定义内部策略名（否则会报 “策略不可以使用内部策略名”）。因此 **不得** 输出 `DIRECT = ...` / `REJECT = ...`。
+- **Shadowrocket**：允许该写法；为兼容历史模板/用户习惯，渲染器可以在 `[Proxy]` 段提供这两个别名项。
+
+当对 Shadowrocket 输出内置别名时，格式为：
 
 ```
 DIRECT = direct
