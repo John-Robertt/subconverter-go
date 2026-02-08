@@ -74,6 +74,27 @@ docker run --rm -p 25500:25500 ghcr.io/john-robertt/subconverter-go:latest
 
 容器内默认监听 `0.0.0.0:25500`（可用 `-listen` 参数覆盖）。
 
+### Docker Compose：健康检查（scratch 镜像）
+
+镜像使用 `scratch` 作为运行时基础镜像（体积小、攻击面小），因此容器内**没有** `/bin/sh`、`curl` 等工具。
+
+如果你希望启用 `healthcheck`，请使用内置的 `-healthcheck` 模式：
+
+```yaml
+healthcheck:
+  test: [ "CMD", "/subconverter-go", "-healthcheck" ]
+  interval: 10s
+  timeout: 3s
+  retries: 20
+```
+
+若你覆盖了服务端口，请在健康检查里同步传入相同的 `-listen`（仅用于推导要检查的 `127.0.0.1:<port>/healthz`）：
+
+```yaml
+healthcheck:
+  test: [ "CMD", "/subconverter-go", "-healthcheck", "-listen", "0.0.0.0:25500" ]
+```
+
 ## 预编译二进制（GitHub Releases）
 
 每次 push tag（`v*`）会自动生成 GitHub Release，包含：
