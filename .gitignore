@@ -10,3 +10,4 @@ SS.txt
 /subconverter-go
 /output
 .DS_Store
+.playwright-cli
