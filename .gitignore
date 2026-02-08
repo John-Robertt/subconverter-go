@@ -8,4 +8,5 @@ subconverter/
 SS.txt
 /out
 /subconverter-go
+/output
 .DS_Store
