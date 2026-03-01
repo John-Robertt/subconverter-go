@@ -41,7 +41,8 @@ func TestCompile_DeterminismAndRulesetRefs(t *testing.T) {
 	if len(got.Proxies) != 4 {
 		t.Fatalf("proxies=%d, want=4", len(got.Proxies))
 	}
-	if got.Proxies[0].Name != "DIRECT-2" || got.Proxies[1].Name != "HK" || got.Proxies[2].Name != "HK-2" || got.Proxies[3].Name != "a-b" {
+	// Proxies preserve subscription merge order (no sorting).
+	if got.Proxies[0].Name != "HK" || got.Proxies[1].Name != "HK-2" || got.Proxies[2].Name != "a-b" || got.Proxies[3].Name != "DIRECT-2" {
 		t.Fatalf("proxy names=%q,%q,%q,%q", got.Proxies[0].Name, got.Proxies[1].Name, got.Proxies[2].Name, got.Proxies[3].Name)
 	}
 
@@ -54,7 +55,7 @@ func TestCompile_DeterminismAndRulesetRefs(t *testing.T) {
 	if want := 5; len(got.Groups[0].Members) != want {
 		t.Fatalf("group0 members=%d, want=%d", len(got.Groups[0].Members), want)
 	}
-	if got.Groups[0].Members[0] != "DIRECT-2" || got.Groups[0].Members[1] != "HK" || got.Groups[0].Members[2] != "HK-2" || got.Groups[0].Members[3] != "a-b" || got.Groups[0].Members[4] != "DIRECT" {
+	if got.Groups[0].Members[0] != "HK" || got.Groups[0].Members[1] != "HK-2" || got.Groups[0].Members[2] != "a-b" || got.Groups[0].Members[3] != "DIRECT-2" || got.Groups[0].Members[4] != "DIRECT" {
 		t.Fatalf("group0 members=%v", got.Groups[0].Members)
 	}
 
@@ -80,6 +81,63 @@ func TestCompile_DeterminismAndRulesetRefs(t *testing.T) {
 	}
 	if got.Rules[len(got.Rules)-1].Type != "MATCH" {
 		t.Fatalf("last rule=%+v", got.Rules[len(got.Rules)-1])
+	}
+}
+
+func TestCompile_PreserveSubscriptionOrder_NoSort(t *testing.T) {
+	subs := []model.Proxy{
+		{Type: "ss", Name: "B", Server: "b.example.com", Port: 1, Cipher: "aes-128-gcm", Password: "pass"},
+		{Type: "ss", Name: "A", Server: "a.example.com", Port: 2, Cipher: "aes-128-gcm", Password: "pass"},
+	}
+
+	prof := &profile.Spec{
+		Version: 1,
+		Groups: []profile.GroupSpec{
+			{Raw: "G`select`[]@all", Name: "G", Type: "select", Members: []string{"@all"}},
+			{Raw: "R`select`(A|B)", Name: "R", Type: "select", RegexRaw: "(A|B)", Regex: regexp.MustCompile("(A|B)")},
+			{Raw: "U`url-test`(A|B)`http://example.com/204`300", Name: "U", Type: "url-test", RegexRaw: "(A|B)", Regex: regexp.MustCompile("(A|B)"), TestURL: "http://example.com/204", IntervalSec: 300},
+		},
+		Rules: []model.Rule{
+			{Type: "MATCH", Action: "G"},
+		},
+	}
+
+	got, err := Compile(subs, prof)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	gotProxyNames := make([]string, 0, len(got.Proxies))
+	for _, p := range got.Proxies {
+		gotProxyNames = append(gotProxyNames, p.Name)
+	}
+	if len(got.Proxies) != 2 || got.Proxies[0].Name != "B" || got.Proxies[1].Name != "A" {
+		t.Fatalf("proxies=%v, want=[B A]", gotProxyNames)
+	}
+
+	if len(got.Groups) != 3 {
+		t.Fatalf("groups=%d, want=3", len(got.Groups))
+	}
+
+	if got.Groups[0].Name != "G" || got.Groups[0].Type != "select" {
+		t.Fatalf("group0=%+v", got.Groups[0])
+	}
+	if len(got.Groups[0].Members) != 2 || got.Groups[0].Members[0] != "B" || got.Groups[0].Members[1] != "A" {
+		t.Fatalf("G members=%v, want=[B A]", got.Groups[0].Members)
+	}
+
+	if got.Groups[1].Name != "R" || got.Groups[1].Type != "select" {
+		t.Fatalf("group1=%+v", got.Groups[1])
+	}
+	if len(got.Groups[1].Members) != 2 || got.Groups[1].Members[0] != "B" || got.Groups[1].Members[1] != "A" {
+		t.Fatalf("R members=%v, want=[B A]", got.Groups[1].Members)
+	}
+
+	if got.Groups[2].Name != "U" || got.Groups[2].Type != "url-test" {
+		t.Fatalf("group2=%+v", got.Groups[2])
+	}
+	if len(got.Groups[2].Members) != 2 || got.Groups[2].Members[0] != "B" || got.Groups[2].Members[1] != "A" {
+		t.Fatalf("U members=%v, want=[B A]", got.Groups[2].Members)
 	}
 }
 

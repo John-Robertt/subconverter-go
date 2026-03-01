@@ -3,7 +3,6 @@ package compiler
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/John-Robertt/subconverter-go/internal/model"
@@ -11,9 +10,9 @@ import (
 )
 
 type Result struct {
-	Proxies []model.Proxy
-	Groups  []model.Group
-	Rules   []model.Rule
+	Proxies     []model.Proxy
+	Groups      []model.Group
+	Rules       []model.Rule
 	RulesetRefs []RulesetRef
 }
 
@@ -100,9 +99,9 @@ func Compile(subs []model.Proxy, prof *profile.Spec) (*Result, error) {
 	}
 
 	return &Result{
-		Proxies: proxies,
-		Groups:  groups,
-		Rules:   rulesOut,
+		Proxies:     proxies,
+		Groups:      groups,
+		Rules:       rulesOut,
 		RulesetRefs: rulesetRefs,
 	}, nil
 }
@@ -180,10 +179,7 @@ func compileProxies(in []model.Proxy) ([]model.Proxy, error) {
 		used[name] = struct{}{}
 	}
 
-	// 4) Sort by final Name (stable output).
-	sort.Slice(deduped, func(i, j int) bool {
-		return deduped[i].Name < deduped[j].Name
-	})
+	// 4) Preserve merge order (no sorting): output follows subscription input order.
 	return deduped, nil
 }
 
@@ -272,7 +268,7 @@ func compileGroups(proxies []model.Proxy, groupSpecs []profile.GroupSpec) ([]mod
 				}
 			} else if gs.Regex != nil {
 				// Regex filter form: <NAME>`select`(REGEX)
-				// Members are matched proxies only, in deterministic name order.
+				// Members are matched proxies only, in subscription merge order.
 				members = make([]string, 0)
 				for _, name := range allNames {
 					if gs.Regex.MatchString(name) {
