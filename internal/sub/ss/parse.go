@@ -38,9 +38,9 @@ func ParseSubscriptionText(sourceURL string, content string) ([]model.Proxy, err
 	}
 
 	// Auto-detect rule from docs/spec/SPEC_SUBSCRIPTION_SS.md:
-	// 1) if it contains substring "ss://", treat as raw list
+	// 1) if it looks like a raw list (ss:// or other supported raw formats), parse directly
 	// 2) else treat as base64 list and decode.
-	if strings.Contains(s, "ss://") {
+	if looksLikeRawList(s) {
 		return parseRawList(sourceURL, s)
 	}
 
@@ -56,6 +56,37 @@ func ParseSubscriptionText(sourceURL string, content string) ([]model.Proxy, err
 	return parseRawList(sourceURL, decoded)
 }
 
+func looksLikeRawList(s string) bool {
+	// Fast path: the canonical raw list format.
+	if strings.Contains(s, "ss://") {
+		return true
+	}
+
+	// Slow path: look at the first meaningful line to avoid accidental false positives.
+	lines := strings.Split(s, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Shadowrocket-style: <name>=ss, <server>, <port>, ...
+		if strings.Contains(line, "=ss,") {
+			return true
+		}
+
+		// Surge-style: shadowsocks = <server>:<port>, method=..., password=..., tag=...
+		left, _, hasEq := strings.Cut(line, "=")
+		if hasEq && strings.EqualFold(strings.TrimSpace(left), "shadowsocks") {
+			return true
+		}
+
+		// Deterministic: only inspect the first meaningful line.
+		break
+	}
+	return false
+}
+
 func parseRawList(sourceURL, raw string) ([]model.Proxy, error) {
 	// Use \n split and trim trailing \r to be CRLF-compatible.
 	lines := strings.Split(raw, "\n")
@@ -69,20 +100,223 @@ func parseRawList(sourceURL, raw string) ([]model.Proxy, error) {
 		if strings.HasPrefix(line, "#") {
 			continue
 		}
-		if !strings.HasPrefix(line, "ss://") {
-			return nil, newParseError(sourceURL, i+1, truncateSnippet(orig, 200), "SUB_UNSUPPORTED_SCHEME", "仅支持 ss:// 协议", "expected: ss://...", nil)
+
+		var (
+			p   model.Proxy
+			err error
+			ok  bool
+		)
+		switch {
+		case strings.HasPrefix(line, "ss://"):
+			p, err = parseSSURI(sourceURL, i+1, line)
+			if err != nil {
+				return nil, err
+			}
+		default:
+			p, ok, err = parseShadowrocketSSLine(sourceURL, i+1, line)
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				p, ok, err = parseSurgeShadowsocksLine(sourceURL, i+1, line)
+				if err != nil {
+					return nil, err
+				}
+			}
+			if !ok {
+				return nil, newParseError(sourceURL, i+1, truncateSnippet(orig, 200), "SUB_UNSUPPORTED_SCHEME", "不支持的订阅行格式", "expected: ss://... | <name>=ss,... | shadowsocks = ...", nil)
+			}
 		}
 
-		p, err := parseSSURI(sourceURL, i+1, line)
-		if err != nil {
-			return nil, err
-		}
 		out = append(out, p)
 	}
 	if len(out) == 0 {
 		return nil, newParseError(sourceURL, 0, "", "SUB_PARSE_ERROR", "订阅中没有任何可用节点", "", nil)
 	}
 	return out, nil
+}
+
+func parseShadowrocketSSLine(sourceURL string, lineNo int, line string) (model.Proxy, bool, error) {
+	// Shadowrocket subscription line:
+	//   <name>=ss, <server>, <port>, encrypt-method=<cipher>, password=<password>, [obfs=<mode>], [obfs-host=<host>], ...
+	namePart, rest, ok := strings.Cut(line, "=")
+	if !ok {
+		return model.Proxy{}, false, nil
+	}
+
+	name := strings.TrimSpace(namePart)
+	if strings.ContainsAny(name, "\r\n\x00") {
+		return model.Proxy{}, true, newParseError(sourceURL, lineNo, truncateSnippet(line, 200), "SUB_PARSE_ERROR", "节点名称包含非法控制字符", "forbidden: \\r \\n \\0", nil)
+	}
+
+	rest = strings.TrimSpace(rest)
+	if !strings.HasPrefix(rest, "ss,") {
+		return model.Proxy{}, false, nil
+	}
+	rest = strings.TrimSpace(strings.TrimPrefix(rest, "ss,"))
+	if rest == "" {
+		return model.Proxy{}, true, newParseError(sourceURL, lineNo, truncateSnippet(line, 200), "SUB_PARSE_ERROR", "ss 行缺少 server/port", "example: name=ss, example.com, 8388, encrypt-method=aes-128-gcm, password=pass", nil)
+	}
+
+	parts := strings.Split(rest, ",")
+	trimmed := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		trimmed = append(trimmed, p)
+	}
+	if len(trimmed) < 2 {
+		return model.Proxy{}, true, newParseError(sourceURL, lineNo, truncateSnippet(line, 200), "SUB_PARSE_ERROR", "ss 行缺少 server/port", "example: name=ss, example.com, 8388, encrypt-method=aes-128-gcm, password=pass", nil)
+	}
+
+	server := strings.TrimSpace(trimmed[0])
+	portStr := strings.TrimSpace(trimmed[1])
+	portInt, err := strconv.Atoi(portStr)
+	if err != nil || portInt < 1 || portInt > 65535 {
+		return model.Proxy{}, true, newParseError(sourceURL, lineNo, truncateSnippet(line, 200), "SUB_PARSE_ERROR", "服务器端口不合法", "expected: 1..65535", err)
+	}
+
+	var (
+		method   string
+		password string
+		obfs     string
+		obfsHost string
+	)
+	for _, seg := range trimmed[2:] {
+		k, v, hasEq := strings.Cut(seg, "=")
+		if !hasEq {
+			// Keep this strict: a bare token is ambiguous.
+			return model.Proxy{}, true, newParseError(sourceURL, lineNo, truncateSnippet(line, 200), "SUB_PARSE_ERROR", "ss 行参数必须是 key=value 形式", "example: encrypt-method=aes-128-gcm", nil)
+		}
+		k = strings.ToLower(strings.TrimSpace(k))
+		v = strings.TrimSpace(v)
+		switch k {
+		case "encrypt-method", "method":
+			method = v
+		case "password":
+			password = v
+		case "obfs":
+			obfs = v
+		case "obfs-host":
+			obfsHost = v
+		default:
+			// Ignore unsupported knobs (tfo/udp-relay/...) to keep conversion useful.
+		}
+	}
+	if strings.TrimSpace(method) == "" || strings.TrimSpace(password) == "" {
+		return model.Proxy{}, true, newParseError(sourceURL, lineNo, truncateSnippet(line, 200), "SUB_PARSE_ERROR", "ss 行缺少必需字段 encrypt-method/method 或 password", "required: encrypt-method=<cipher>, password=<password>", nil)
+	}
+
+	var pluginName string
+	var pluginOpts []model.KV
+	if strings.TrimSpace(obfs) != "" {
+		pluginName = "simple-obfs"
+		pluginOpts = append(pluginOpts, model.KV{Key: "obfs", Value: obfs})
+		if strings.TrimSpace(obfsHost) != "" {
+			pluginOpts = append(pluginOpts, model.KV{Key: "obfs-host", Value: obfsHost})
+		}
+	}
+
+	return model.Proxy{
+		Type:       "ss",
+		Name:       name,
+		Server:     server,
+		Port:       portInt,
+		Cipher:     method,
+		Password:   password,
+		PluginName: pluginName,
+		PluginOpts: pluginOpts,
+	}, true, nil
+}
+
+func parseSurgeShadowsocksLine(sourceURL string, lineNo int, line string) (model.Proxy, bool, error) {
+	// Surge proxy line:
+	//   shadowsocks = <server>:<port>, method=<cipher>, password=<password>, tag=<name>, ...
+	left, right, ok := strings.Cut(line, "=")
+	if !ok {
+		return model.Proxy{}, false, nil
+	}
+	if !strings.EqualFold(strings.TrimSpace(left), "shadowsocks") {
+		return model.Proxy{}, false, nil
+	}
+
+	right = strings.TrimSpace(right)
+	if right == "" {
+		return model.Proxy{}, true, newParseError(sourceURL, lineNo, truncateSnippet(line, 200), "SUB_PARSE_ERROR", "shadowsocks 行为空", "example: shadowsocks = example.com:8388, method=aes-128-gcm, password=pass, tag=HK", nil)
+	}
+
+	parts := strings.Split(right, ",")
+	if len(parts) == 0 {
+		return model.Proxy{}, true, newParseError(sourceURL, lineNo, truncateSnippet(line, 200), "SUB_PARSE_ERROR", "shadowsocks 行缺少 server:port", "example: shadowsocks = example.com:8388, method=aes-128-gcm, password=pass, tag=HK", nil)
+	}
+	hostPort := strings.TrimSpace(parts[0])
+	server, portInt, err := parseHostPort(hostPort)
+	if err != nil {
+		return model.Proxy{}, true, newParseError(sourceURL, lineNo, truncateSnippet(line, 200), "SUB_PARSE_ERROR", "服务器地址或端口不合法", "expected: host:port", err)
+	}
+
+	var (
+		method   string
+		password string
+		name     string
+		obfs     string
+		obfsHost string
+	)
+	for _, seg := range parts[1:] {
+		seg = strings.TrimSpace(seg)
+		if seg == "" {
+			continue
+		}
+		k, v, hasEq := strings.Cut(seg, "=")
+		if !hasEq {
+			return model.Proxy{}, true, newParseError(sourceURL, lineNo, truncateSnippet(line, 200), "SUB_PARSE_ERROR", "shadowsocks 行参数必须是 key=value 形式", "example: method=aes-128-gcm", nil)
+		}
+		k = strings.ToLower(strings.TrimSpace(k))
+		v = strings.TrimSpace(v)
+		switch k {
+		case "encrypt-method", "method":
+			method = v
+		case "password":
+			password = v
+		case "tag":
+			name = v
+		case "obfs":
+			obfs = v
+		case "obfs-host":
+			obfsHost = v
+		default:
+			// Ignore unsupported knobs (fast-open/udp-relay/...) to keep conversion useful.
+		}
+	}
+	if strings.ContainsAny(name, "\r\n\x00") {
+		return model.Proxy{}, true, newParseError(sourceURL, lineNo, truncateSnippet(line, 200), "SUB_PARSE_ERROR", "节点名称包含非法控制字符", "forbidden: \\r \\n \\0", nil)
+	}
+	if strings.TrimSpace(method) == "" || strings.TrimSpace(password) == "" {
+		return model.Proxy{}, true, newParseError(sourceURL, lineNo, truncateSnippet(line, 200), "SUB_PARSE_ERROR", "shadowsocks 行缺少必需字段 method 或 password", "required: method=<cipher>, password=<password>", nil)
+	}
+
+	var pluginName string
+	var pluginOpts []model.KV
+	if strings.TrimSpace(obfs) != "" {
+		pluginName = "simple-obfs"
+		pluginOpts = append(pluginOpts, model.KV{Key: "obfs", Value: obfs})
+		if strings.TrimSpace(obfsHost) != "" {
+			pluginOpts = append(pluginOpts, model.KV{Key: "obfs-host", Value: obfsHost})
+		}
+	}
+
+	return model.Proxy{
+		Type:       "ss",
+		Name:       strings.TrimSpace(name),
+		Server:     server,
+		Port:       portInt,
+		Cipher:     method,
+		Password:   password,
+		PluginName: pluginName,
+		PluginOpts: pluginOpts,
+	}, true, nil
 }
 
 func parseSSURI(sourceURL string, lineNo int, s string) (model.Proxy, error) {

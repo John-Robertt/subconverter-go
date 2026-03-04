@@ -9,12 +9,15 @@
 ## 1. 范围（Scope）
 
 v1 仅支持：
-- 订阅内容由 **ss:// URI** 组成（每行一个）。
-- 订阅整体可以是“明文列表”或“base64 编码后的明文列表”。
+- 订阅内容是“明文列表”或“base64 编码后的明文列表”。
+- 明文列表支持以下 SS 节点行（每行一个）：
+  - `ss://...`（标准 SS URI）
+  - Shadowrocket 订阅格式：`<name>=ss, <server>, <port>, encrypt-method=<cipher>, password=<password>, ...`
+  - Surge 订阅格式：`shadowsocks = <server>:<port>, method=<cipher>, password=<password>, tag=<name>, ...`
 
 v1 不支持（遇到即报错）：
 - 非 `ss://` 的协议行（例如 `ssr://`、`vmess://`、`trojan://`、`hysteria://` 等）。
-- 订阅内容中的“非注释非空行”不是合法 URI。
+- 订阅内容中的“非注释非空行”不是本规范支持的 SS 节点行。
 
 ---
 
@@ -42,7 +45,11 @@ v1 不支持（遇到即报错）：
 
 给定去 BOM、去首尾空白后的文本 `S`：
 
-1) 若 `S` 中包含子串 `ss://`，则视为 **raw**，按第 3 节逐行解析。
+1) 若 `S` 看起来像 **raw**（以下任一条件成立），则按第 3 节逐行解析：
+   - `S` 中包含子串 `ss://`
+   - 或第一个“非空且非注释行”满足：
+     - 包含子串 `=ss,`（Shadowrocket 格式）
+     - 或形如 `shadowsocks = ...`（Surge 格式；忽略大小写与多余空白）
 2) 否则视为 **b64**：
    - 移除 `S` 内所有空白字符得到 `S2`。
    - 尝试用 base64（标准或 URL-safe，允许无 padding）解码 `S2`。
@@ -63,11 +70,13 @@ v1 不支持（遇到即报错）：
 - 去除行首尾空白。
 - 空行：忽略。
 - 注释行：若去空白后以 `#` 开头，则忽略。
-- 其它行：必须是合法的 `ss://` URI；否则报错，并提供行号与原始片段（snippet）。
+- 其它行：必须是第 3.2 节支持的任一 SS 节点行；否则报错，并提供行号与原始片段（snippet）。
 
-### 3.2 允许的 URI 形态（v1）
+### 3.2 支持的 SS 节点行（v1）
 
-v1 支持两类常见 SS URI（兼容大部分订阅提供方）：
+v1 支持以下三类输入行：
+
+#### 3.2.1 `ss://` URI（兼容大部分订阅提供方）
 
 #### 形态 A：userinfo-base64（SIP002 常见）
 
@@ -93,6 +102,28 @@ ss://<B64(method:password@host:port)>[#<name>]
 - 凭据部分按“第一个 `:`”切分 `method` 与 `password`（密码允许包含 `:`）。
 
 解码后得到的 `host/port` 与 `name` 解析规则与形态 A 相同。
+
+#### 3.2.2 Shadowrocket 订阅格式（`<name>=ss,...`）
+
+```
+<name>=ss, <server>, <port>, encrypt-method=<cipher>, password=<password>[, obfs=<mode>][, obfs-host=<host>][, ...]
+```
+
+要求：
+- 必需字段：`server`、`port`、`encrypt-method`（或 `method`）、`password`
+- `obfs/obfs-host`（若出现）用于生成 SS plugin（见 3.3）
+- 其它不影响渲染的开关字段（例如 `tfo`、`udp-relay`）允许出现但会被忽略
+
+#### 3.2.3 Surge 订阅格式（`shadowsocks = ...`）
+
+```
+shadowsocks = <server>:<port>, method=<cipher>, password=<password>[, tag=<name>][, obfs=<mode>][, obfs-host=<host>][, ...]
+```
+
+要求：
+- 必需字段：`server:port`、`method`（或 `encrypt-method`）、`password`
+- `tag` 用作节点名称（可选）
+- 其它不影响渲染的开关字段（例如 `fast-open`、`udp-relay`）允许出现但会被忽略
 
 ### 3.3 `plugin` 参数（可选）
 
