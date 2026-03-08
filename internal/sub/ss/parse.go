@@ -97,6 +97,21 @@ func looksLikeShadowrocketSSLine(line string) bool {
 	return strings.HasPrefix(rest, "ss,")
 }
 
+func normalizeKVValue(v string) (string, error) {
+	v = strings.TrimSpace(v)
+	if len(v) < 2 {
+		return v, nil
+	}
+	quote := v[0]
+	if quote != '"' && quote != 0x27 && quote != '`' {
+		return v, nil
+	}
+	if v[len(v)-1] != quote {
+		return "", errors.New("unterminated quoted value")
+	}
+	return strconv.Unquote(v)
+}
+
 func parseRawList(sourceURL, raw string) ([]model.Proxy, error) {
 	// Use \n split and trim trailing \r to be CRLF-compatible.
 	lines := strings.Split(raw, "\n")
@@ -201,7 +216,10 @@ func parseShadowrocketSSLine(sourceURL string, lineNo int, line string) (model.P
 			return model.Proxy{}, true, newParseError(sourceURL, lineNo, truncateSnippet(line, 200), "SUB_PARSE_ERROR", "ss 行参数必须是 key=value 形式", "example: encrypt-method=aes-128-gcm", nil)
 		}
 		k = strings.ToLower(strings.TrimSpace(k))
-		v = strings.TrimSpace(v)
+		v, err = normalizeKVValue(v)
+		if err != nil {
+			return model.Proxy{}, true, newParseError(sourceURL, lineNo, truncateSnippet(line, 200), "SUB_PARSE_ERROR", "ss 行参数值引号不合法", "example: password=pass or password=\"pass\"", err)
+		}
 		switch k {
 		case "encrypt-method", "method":
 			method = v
@@ -284,7 +302,10 @@ func parseSurgeShadowsocksLine(sourceURL string, lineNo int, line string) (model
 			return model.Proxy{}, true, newParseError(sourceURL, lineNo, truncateSnippet(line, 200), "SUB_PARSE_ERROR", "shadowsocks 行参数必须是 key=value 形式", "example: method=aes-128-gcm", nil)
 		}
 		k = strings.ToLower(strings.TrimSpace(k))
-		v = strings.TrimSpace(v)
+		v, err = normalizeKVValue(v)
+		if err != nil {
+			return model.Proxy{}, true, newParseError(sourceURL, lineNo, truncateSnippet(line, 200), "SUB_PARSE_ERROR", "shadowsocks 行参数值引号不合法", "example: password=pass or password=\"pass\"", err)
+		}
 		switch k {
 		case "encrypt-method", "method":
 			method = v

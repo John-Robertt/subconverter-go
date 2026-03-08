@@ -168,6 +168,44 @@ func TestParseSubscriptionText_ShadowrocketSSLine_SpaceAfterEqual(t *testing.T) 
 	}
 }
 
+func TestParseSubscriptionText_ShadowrocketSSLine_QuotedPassword(t *testing.T) {
+	raw := `HK= ss, example.com, 8388, encrypt-method=2022-blake3-aes-128-gcm, password="qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ=="
+`
+	proxies, err := ParseSubscriptionText("https://example.com/sub.txt", raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("len=%d, want=1", len(proxies))
+	}
+	want := "qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ=="
+	if proxies[0].Password != want {
+		t.Fatalf("password=%q, want=%q", proxies[0].Password, want)
+	}
+	if proxies[0].Cipher != "2022-blake3-aes-128-gcm" {
+		t.Fatalf("cipher=%q, want=%q", proxies[0].Cipher, "2022-blake3-aes-128-gcm")
+	}
+}
+
+func TestParseSubscriptionText_SurgeShadowsocksLine_QuotedPassword(t *testing.T) {
+	raw := `shadowsocks = example.com:8388, method=2022-blake3-aes-128-gcm, password="qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ==", tag=HK
+`
+	proxies, err := ParseSubscriptionText("https://example.com/sub.txt", raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("len=%d, want=1", len(proxies))
+	}
+	want := "qJKTJ5euV8U1Vl7x8ZjBcw==:u3JBNJrkDWwVjWcE8qIBaQ=="
+	if proxies[0].Password != want {
+		t.Fatalf("password=%q, want=%q", proxies[0].Password, want)
+	}
+	if proxies[0].Name != "HK" {
+		t.Fatalf("name=%q, want=%q", proxies[0].Name, "HK")
+	}
+}
+
 func TestParseSubscriptionText_SurgeShadowsocksLine(t *testing.T) {
 	raw := "shadowsocks = example.com:8388, method=aes-128-gcm, password=pass, tag=HK, fast-open=true\n"
 	proxies, err := ParseSubscriptionText("https://example.com/sub.txt", raw)

@@ -113,6 +113,7 @@ ss://<B64(method:password@host:port)>[#<name>]
 - 必需字段：`server`、`port`、`encrypt-method`（或 `method`）、`password`
 - `obfs/obfs-host`（若出现）用于生成 SS plugin（见 3.3）
 - 其它不影响渲染的开关字段（例如 `tfo`、`udp-relay`）允许出现但会被忽略
+- `key=value` 中的 value 若带外层引号（例如 `password="..."`），解析时必须去掉外层引号再入库。
 
 #### 3.2.3 Surge 订阅格式（`shadowsocks = ...`）
 
@@ -124,6 +125,7 @@ shadowsocks = <server>:<port>, method=<cipher>, password=<password>[, tag=<name>
 - 必需字段：`server:port`、`method`（或 `encrypt-method`）、`password`
 - `tag` 用作节点名称（可选）
 - 其它不影响渲染的开关字段（例如 `fast-open`、`udp-relay`）允许出现但会被忽略
+- `key=value` 中的 value 若带外层引号（例如 `password="..."`），解析时必须去掉外层引号再入库。
 
 ### 3.3 `plugin` 参数（可选）
 
