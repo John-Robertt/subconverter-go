@@ -151,6 +151,23 @@ func TestParseSubscriptionText_ShadowrocketSSLine(t *testing.T) {
 	}
 }
 
+func TestParseSubscriptionText_ShadowrocketSSLine_SpaceAfterEqual(t *testing.T) {
+	raw := "HK= ss, example.com, 8388, encrypt-method=aes-128-gcm, password=pass\n"
+	proxies, err := ParseSubscriptionText("https://example.com/sub.txt", raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("len=%d, want=1", len(proxies))
+	}
+	if proxies[0].Name != "HK" {
+		t.Fatalf("name=%q, want=%q", proxies[0].Name, "HK")
+	}
+	if proxies[0].Server != "example.com" || proxies[0].Port != 8388 {
+		t.Fatalf("server/port=%q/%d, want example.com/8388", proxies[0].Server, proxies[0].Port)
+	}
+}
+
 func TestParseSubscriptionText_SurgeShadowsocksLine(t *testing.T) {
 	raw := "shadowsocks = example.com:8388, method=aes-128-gcm, password=pass, tag=HK, fast-open=true\n"
 	proxies, err := ParseSubscriptionText("https://example.com/sub.txt", raw)

@@ -71,7 +71,8 @@ func looksLikeRawList(s string) bool {
 		}
 
 		// Shadowrocket-style: <name>=ss, <server>, <port>, ...
-		if strings.Contains(line, "=ss,") {
+		// Some providers emit an extra blank after '=' ("= ss,").
+		if looksLikeShadowrocketSSLine(line) {
 			return true
 		}
 
@@ -85,6 +86,15 @@ func looksLikeRawList(s string) bool {
 		break
 	}
 	return false
+}
+
+func looksLikeShadowrocketSSLine(line string) bool {
+	_, rest, ok := strings.Cut(line, "=")
+	if !ok {
+		return false
+	}
+	rest = strings.TrimSpace(rest)
+	return strings.HasPrefix(rest, "ss,")
 }
 
 func parseRawList(sourceURL, raw string) ([]model.Proxy, error) {
