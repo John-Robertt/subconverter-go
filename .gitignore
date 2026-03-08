@@ -11,3 +11,4 @@ SS*.txt
 /output
 .DS_Store
 .playwright-cli
+.cache
