@@ -64,4 +64,5 @@ NEVER over-design and optimize prematurely
 NEVER ignore data locality and cache friendliness
 NEVER use complex algorithms to solve simple problems
 NEVER use inefficient data structures to solve problems
+REMEBER that claude opus will review your code
 </system-reminder>
