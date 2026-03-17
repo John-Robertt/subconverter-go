@@ -36,6 +36,7 @@ go build -o subconverter-go ./cmd/subconverter-go
 
 ```bash
 ./subconverter-go \
+  -error-log-dir ./logs \
   -convert-timeout 60s \
   -fetch-timeout 15s \
   -shutdown-timeout 10s
@@ -59,6 +60,18 @@ curl -fsS http://127.0.0.1:25500/metrics
 http://127.0.0.1:25500/
 ```
 
+可选：下载错误快照日志 ZIP：
+
+```bash
+curl -fsS -o subconverter-errors.zip http://127.0.0.1:25500/logs/errors.zip
+```
+
+说明：
+- `-error-log-dir` 未指定时，默认当前工作目录。
+- 启动前会检查日志目录是否可读可写；若不可用，服务会直接退出并提示容器挂载可写卷或调整 `WORKDIR` / `-error-log-dir`。
+- 运行期间若日志目录失效，或错误快照写入/导出出现真实 I/O 故障，`/healthz` 会返回 `503`，便于容器健康检查接管重启。
+- 正常情况下，`/healthz` 不会创建空的 `errors-YYYY-MM-DD.jsonl`；只有真实转换失败时才会生成错误日志文件。
+
 ## Docker 运行（推荐部署）
 
 镜像发布在 GitHub Container Registry（GHCR）：
@@ -73,6 +86,17 @@ docker run --rm -p 25500:25500 ghcr.io/john-robertt/subconverter-go:latest
 ```
 
 容器内默认监听 `0.0.0.0:25500`（可用 `-listen` 参数覆盖）。
+
+若需要保留错误快照日志，建议挂载一个可写目录并传入 `-error-log-dir`：
+
+```bash
+docker run --rm \
+  -p 25500:25500 \
+  -v "$PWD/logs:/logs" \
+  ghcr.io/john-robertt/subconverter-go:latest \
+  -listen 0.0.0.0:25500 \
+  -error-log-dir /logs
+```
 
 ### Docker Compose：健康检查（scratch 镜像）
 
@@ -155,6 +179,18 @@ curl -fsS 'http://127.0.0.1:25500/api/convert' \
   }'
 ```
 
+### 4) 下载错误日志 ZIP
+
+```bash
+curl -fsS -o subconverter-errors.zip \
+  'http://127.0.0.1:25500/logs/errors.zip'
+```
+
+返回内容：
+- `application/zip`
+- ZIP 内只包含按天切分的 `errors-YYYY-MM-DD.jsonl`
+- 若当前还没有真实失败日志，接口返回 `404`
+
 ## profile.yaml（最小可用示例）
 
 profile 是一个 YAML 文件，但写法尽量贴近 `Rules.ini` 的“指令列表”。
@@ -229,6 +265,13 @@ rules:
 - `url/line/snippet/hint`：定位信息（如果适用）
 
 同时服务端会输出最小访问日志（不包含 query string，避免泄露 sub/profile 里的 token）。
+对于转换失败，服务端还会把脱敏后的错误快照追加到按天日志文件中，并可通过 `GET /logs/errors.zip` 打包下载。
+
+错误快照与健康检查的关系：
+- 只有真实转换失败时，才会追加 `errors-YYYY-MM-DD.jsonl`
+- `/healthz` 在健康状态下只做无副作用检查，不会创建空日志文件
+- 若某次错误快照写入失败，服务仍会把原始业务错误返回给客户端，但随后 `/healthz` 会进入 `503`，让容器或外部探针发现“错误日志持久化能力已失效”
+- 当日志目录恢复可读写后，`/healthz` 会自动恢复为 `200`
 
 见：`docs/spec/SPEC_HTTP_API.md`
 

@@ -26,6 +26,16 @@ v1 约定：
   - `Content-Type: application/json; charset=utf-8`
   - body 为结构化错误（见第 4 节）
 
+辅助接口：
+- `GET /healthz`
+  - 健康时返回 `200 OK` + `ok\n`
+  - 当错误日志目录失效，或错误快照持久化能力已降级时，返回 `503 Service Unavailable`
+  - 健康状态下不得创建业务错误日志文件；即 `/healthz` 不能因为探测本身生成空的 `errors-YYYY-MM-DD.jsonl`
+- `GET /logs/errors.zip`
+  - 成功时返回 `200 OK` + `application/zip`
+  - ZIP 内只包含真实产生的 `errors-YYYY-MM-DD.jsonl`
+  - 若当前没有任何错误日志文件，返回 `404`
+
 ---
 
 ## 2. GET 接口（用于 UI 生成 URL / 便于订阅）
@@ -172,3 +182,13 @@ body：
 
 - 对同一组输入（订阅/profile/template/ruleset 内容一致），输出必须字节级稳定。
 - 允许服务端对远程资源做缓存与并发去重；客户端不得依赖缓存行为（缓存属于实现细节）。
+
+---
+
+## 7. 错误快照与健康检查约束
+
+- 服务端在转换失败时，应把脱敏后的错误快照追加到按天切分的 `errors-YYYY-MM-DD.jsonl`
+- 服务端在返回业务错误给客户端时，不得因为“写错误快照失败”而改写原始业务状态码
+- 若错误快照写入失败，服务端必须把错误日志子系统标记为降级，后续 `GET /healthz` 必须返回 `503`
+- `GET /healthz` 在正常状态下只能做无副作用检查；只有在已经降级的前提下，才允许通过隐藏探针文件验证恢复能力
+- `GET /logs/errors.zip` 的成功，不代表写入能力已经恢复；写入能力恢复应以健康检查中的恢复探针为准

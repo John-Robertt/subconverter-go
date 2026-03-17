@@ -41,6 +41,7 @@ func (w *statusWriter) Write(p []byte) (int, error) {
 
 func withObservability(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = withRequestID(r)
 		start := time.Now()
 
 		sw := &statusWriter{ResponseWriter: w}
@@ -62,7 +63,7 @@ func withObservability(next http.Handler) http.Handler {
 		// Minimal access log. Keep it safe: never log the query string.
 		if r.URL.Path != "/healthz" && r.URL.Path != "/metrics" {
 			dur := time.Since(start).Round(time.Millisecond)
-			log.Printf("http %s %s pattern=%q status=%d dur=%s bytes=%d", r.Method, r.URL.Path, pattern, status, dur, sw.bytes)
+			log.Printf("http %s %s pattern=%q status=%d dur=%s bytes=%d request_id=%q", r.Method, r.URL.Path, pattern, status, dur, sw.bytes, requestIDFromContext(r.Context()))
 		}
 	})
 }

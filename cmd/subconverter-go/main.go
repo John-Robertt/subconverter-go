@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/John-Robertt/subconverter-go/internal/errlog"
 	"github.com/John-Robertt/subconverter-go/internal/httpapi"
 )
 
@@ -26,6 +28,7 @@ func main() {
 	healthcheck := flag.Bool("healthcheck", false, "执行健康检查并退出（0=healthy，1=unhealthy）")
 	healthcheckURL := flag.String("healthcheck-url", "", "健康检查 URL（默认由 -listen 推导为 http://127.0.0.1:<port>/healthz）")
 	healthcheckTimeout := flag.Duration("healthcheck-timeout", 2*time.Second, "健康检查超时（建议小于容器 healthcheck 的 timeout）")
+	errorLogDir := flag.String("error-log-dir", "", "错误快照日志目录（默认当前工作目录）")
 	flag.Parse()
 
 	if *healthcheck {
@@ -45,11 +48,17 @@ func main() {
 		return
 	}
 
+	store, err := initErrorLogStore(*errorLogDir, time.Now)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	srv := &http.Server{
 		Addr: *listen,
 		Handler: httpapi.NewHandlerWithOptions(httpapi.Options{
 			ConvertTimeout: *convertTimeout,
 			FetchTimeout:   *fetchTimeout,
+			ErrorLog:       store,
 		}),
 		ReadHeaderTimeout: *readHeaderTimeout,
 	}
@@ -84,6 +93,17 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+}
+
+func initErrorLogStore(rawDir string, now func() time.Time) (*errlog.Store, error) {
+	store, err := errlog.NewStore(rawDir)
+	if err != nil {
+		return nil, fmt.Errorf("初始化 error-log-dir 失败: %w；容器请挂载可写卷，或调整 WORKDIR / -error-log-dir", err)
+	}
+	if err := store.ValidateStartup(now()); err != nil {
+		return nil, fmt.Errorf("error-log-dir 不可用（dir=%s）: %w；容器请挂载可写卷，或调整 WORKDIR / -error-log-dir", store.Dir(), err)
+	}
+	return store, nil
 }
 
 func deriveHealthzURL(listenAddr string) (string, error) {

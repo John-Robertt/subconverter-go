@@ -12,7 +12,8 @@ func NewMuxWithOptions(opt Options) *http.ServeMux {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", handleIndex)
-	mux.HandleFunc("GET /healthz", handleHealthz)
+	mux.HandleFunc("GET /healthz", h.handleHealthz)
+	mux.HandleFunc("GET /logs/errors.zip", h.handleErrorLogsZip)
 	mux.HandleFunc("GET /metrics", handleMetrics)
 	mux.HandleFunc("GET /sub", h.handleSub)
 	mux.HandleFunc("POST /api/convert", h.handleConvert)

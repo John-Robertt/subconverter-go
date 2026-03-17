@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/John-Robertt/subconverter-go/internal/compiler"
+	"github.com/John-Robertt/subconverter-go/internal/errlog"
 	"github.com/John-Robertt/subconverter-go/internal/fetch"
 	"github.com/John-Robertt/subconverter-go/internal/model"
 	"github.com/John-Robertt/subconverter-go/internal/profile"
@@ -41,7 +42,7 @@ type convertRequestJSON struct {
 	Encode   string   `json:"encode"`
 }
 
-func runConvert(ctx context.Context, r *http.Request, req convertRequest, opt Options) (string, error) {
+func runConvert(ctx context.Context, r *http.Request, req convertRequest, opt Options, collector *errlog.Collector) (string, error) {
 	opt = opt.withDefaults()
 
 	// Keep a hard upper bound so handlers don't hang forever if upstream misbehaves.
@@ -50,7 +51,7 @@ func runConvert(ctx context.Context, r *http.Request, req convertRequest, opt Op
 
 	switch req.Mode {
 	case "list":
-		subs, err := fetchAndParseSubs(ctx, req.Subs, opt.FetchTimeout)
+		subs, err := fetchAndParseSubs(ctx, req.Subs, opt.FetchTimeout, collector)
 		if err != nil {
 			return "", err
 		}
@@ -79,21 +80,25 @@ func runConvert(ctx context.Context, r *http.Request, req convertRequest, opt Op
 		}
 	case "config":
 		type profResult struct {
-			prof *profile.Spec
-			err  error
+			prof     *profile.Spec
+			snapshot *errlog.ResourceSnapshot
+			err      error
 		}
 		profCh := make(chan profResult, 1)
 		go func() {
-			p, err := fetchAndParseProfile(ctx, req.Profile, string(req.Target), opt.FetchTimeout)
-			profCh <- profResult{prof: p, err: err}
+			p, snapshot, err := fetchAndParseProfile(ctx, req.Profile, string(req.Target), opt.FetchTimeout)
+			profCh <- profResult{prof: p, snapshot: snapshot, err: err}
 		}()
 
-		subs, err := fetchAndParseSubs(ctx, req.Subs, opt.FetchTimeout)
+		subs, err := fetchAndParseSubs(ctx, req.Subs, opt.FetchTimeout, collector)
 		if err != nil {
 			return "", err
 		}
 
 		pr := <-profCh
+		if collector != nil && pr.snapshot != nil {
+			collector.AddResource(*pr.snapshot)
+		}
 		if pr.err != nil {
 			return "", pr.err
 		}
@@ -102,6 +107,9 @@ func runConvert(ctx context.Context, r *http.Request, req convertRequest, opt Op
 		res, err := compiler.Compile(subs, prof)
 		if err != nil {
 			return "", err
+		}
+		if collector != nil {
+			collector.SetCompiledCounts(len(res.Proxies), len(res.Groups), len(res.Rules))
 		}
 
 		blocks, err := render.Render(req.Target, res)
@@ -113,6 +121,9 @@ func runConvert(ctx context.Context, r *http.Request, req convertRequest, opt Op
 		templateText, err := fetch.FetchTextWithOptions(ctx, fetch.KindTemplate, templateURL, fetch.Options{Timeout: opt.FetchTimeout})
 		if err != nil {
 			return "", err
+		}
+		if collector != nil {
+			collector.AddResource(errlog.NewResourceSnapshot(errlog.ResourceTemplate, templateURL, templateText))
 		}
 
 		out, err := template.InjectAnchors(templateText, blocks, template.AnchorOptions{
@@ -140,7 +151,7 @@ func runConvert(ctx context.Context, r *http.Request, req convertRequest, opt Op
 	}
 }
 
-func fetchAndParseSubs(ctx context.Context, subURLs []string, fetchTimeout time.Duration) ([]model.Proxy, error) {
+func fetchAndParseSubs(ctx context.Context, subURLs []string, fetchTimeout time.Duration, collector *errlog.Collector) ([]model.Proxy, error) {
 	// Fast fail: validate and trim.
 	urls := make([]string, 0, len(subURLs))
 	for _, raw := range subURLs {
@@ -167,8 +178,9 @@ func fetchAndParseSubs(ctx context.Context, subURLs []string, fetchTimeout time.
 	// Fetch+parse concurrently, but consume results in the deterministic
 	// (first-seen) URL order to keep error semantics intuitive.
 	type result struct {
-		proxies []model.Proxy
-		err     error
+		proxies  []model.Proxy
+		snapshot errlog.ResourceSnapshot
+		err      error
 	}
 	results := make([]result, len(unique))
 	done := make([]chan struct{}, len(unique))
@@ -202,6 +214,7 @@ func fetchAndParseSubs(ctx context.Context, subURLs []string, fetchTimeout time.
 				results[i].err = err
 				return
 			}
+			results[i].snapshot = errlog.NewResourceSnapshot(errlog.ResourceSubscription, u, text)
 			proxies, err := ss.ParseSubscriptionText(u, text)
 			if err != nil {
 				results[i].err = err
@@ -214,6 +227,9 @@ func fetchAndParseSubs(ctx context.Context, subURLs []string, fetchTimeout time.
 	out := make([]model.Proxy, 0)
 	for i := range unique {
 		<-done[i]
+		if collector != nil && results[i].snapshot.Kind != "" {
+			collector.AddResource(results[i].snapshot)
+		}
 		if results[i].err != nil {
 			// Stop remaining fetches ASAP; preserve stable "first failing URL"
 			// semantics (based on the deterministic URL order above).
@@ -234,19 +250,27 @@ func fetchAndParseSubs(ctx context.Context, subURLs []string, fetchTimeout time.
 			},
 		}
 	}
+	if collector != nil {
+		collector.SetParsedProxyCount(len(out))
+	}
 	return out, nil
 }
 
-func fetchAndParseProfile(ctx context.Context, profileURL string, requiredTarget string, fetchTimeout time.Duration) (*profile.Spec, error) {
+func fetchAndParseProfile(ctx context.Context, profileURL string, requiredTarget string, fetchTimeout time.Duration) (*profile.Spec, *errlog.ResourceSnapshot, error) {
 	profileURL = strings.TrimSpace(profileURL)
 	if profileURL == "" {
-		return nil, requestError("INVALID_ARGUMENT", "profile 不能为空", "")
+		return nil, nil, requestError("INVALID_ARGUMENT", "profile 不能为空", "")
 	}
 	text, err := fetch.FetchTextWithOptions(ctx, fetch.KindProfile, profileURL, fetch.Options{Timeout: fetchTimeout})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return profile.ParseProfileYAML(profileURL, text, requiredTarget)
+	snapshot := errlog.NewResourceSnapshot(errlog.ResourceProfile, profileURL, text)
+	prof, err := profile.ParseProfileYAML(profileURL, text, requiredTarget)
+	if err != nil {
+		return nil, &snapshot, err
+	}
+	return prof, &snapshot, nil
 }
 
 func renderSSListRaw(proxies []model.Proxy) (string, error) {

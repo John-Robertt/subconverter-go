@@ -1,6 +1,10 @@
 package httpapi
 
-import "time"
+import (
+	"time"
+
+	"github.com/John-Robertt/subconverter-go/internal/errlog"
+)
 
 // Options controls HTTP API runtime behavior (timeouts, etc.).
 //
@@ -13,6 +17,9 @@ type Options struct {
 	// FetchTimeout is the per-HTTP-request timeout used when fetching remote
 	// resources (subscription/profile/template).
 	FetchTimeout time.Duration
+
+	// ErrorLog stores failure snapshots and exposes health/export operations.
+	ErrorLog *errlog.Store
 }
 
 func (o Options) withDefaults() Options {
