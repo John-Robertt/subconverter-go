@@ -13,6 +13,7 @@ func TestRender_Clash_PasswordQuotedAndPlugin(t *testing.T) {
 	res := &compiler.Result{
 		Proxies: []model.Proxy{
 			{
+				ID:         "p1",
 				Type:       "ss",
 				Name:       "n1",
 				Server:     "example.com",
@@ -24,7 +25,7 @@ func TestRender_Clash_PasswordQuotedAndPlugin(t *testing.T) {
 			},
 		},
 		Groups: []model.Group{
-			{Name: "PROXY", Type: "select", Members: []string{"n1", "DIRECT"}},
+			{Name: "PROXY", Type: "select", Members: []model.MemberRef{proxyRef("p1"), builtinRef("DIRECT")}},
 		},
 		Rules: []model.Rule{
 			{Type: "MATCH", Action: "PROXY"},
@@ -49,9 +50,9 @@ func TestRender_Clash_PasswordQuotedAndPlugin(t *testing.T) {
 func TestRender_Clash_UnsupportedPlugin(t *testing.T) {
 	res := &compiler.Result{
 		Proxies: []model.Proxy{
-			{Type: "ss", Name: "n1", Server: "example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pass", PluginName: "v2ray-plugin"},
+			{ID: "p1", Type: "ss", Name: "n1", Server: "example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pass", PluginName: "v2ray-plugin"},
 		},
-		Groups: []model.Group{{Name: "PROXY", Type: "select", Members: []string{"n1"}}},
+		Groups: []model.Group{{Name: "PROXY", Type: "select", Members: []model.MemberRef{proxyRef("p1")}}},
 		Rules:  []model.Rule{{Type: "MATCH", Action: "PROXY"}},
 	}
 
@@ -68,10 +69,10 @@ func TestRender_Clash_UnsupportedPlugin(t *testing.T) {
 func TestRender_SurgeLike_ProxyCommaQuotedAndReferenced(t *testing.T) {
 	res := &compiler.Result{
 		Proxies: []model.Proxy{
-			{Type: "ss", Name: "a,b", Server: "example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pass"},
+			{ID: "p1", Type: "ss", Name: "a,b", Server: "example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pass"},
 		},
 		Groups: []model.Group{
-			{Name: "PROXY", Type: "select", Members: []string{"a,b", "DIRECT"}},
+			{Name: "PROXY", Type: "select", Members: []model.MemberRef{proxyRef("p1"), builtinRef("DIRECT")}},
 		},
 		Rules: []model.Rule{
 			{Type: "MATCH", Action: "PROXY"},
@@ -93,10 +94,10 @@ func TestRender_SurgeLike_ProxyCommaQuotedAndReferenced(t *testing.T) {
 func TestRender_SurgeLike_GroupNameInvalid(t *testing.T) {
 	res := &compiler.Result{
 		Proxies: []model.Proxy{
-			{Type: "ss", Name: "n1", Server: "example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pass"},
+			{ID: "p1", Type: "ss", Name: "n1", Server: "example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pass"},
 		},
 		Groups: []model.Group{
-			{Name: "A,B", Type: "select", Members: []string{"n1"}},
+			{Name: "A,B", Type: "select", Members: []model.MemberRef{proxyRef("p1")}},
 		},
 		Rules: []model.Rule{{Type: "MATCH", Action: "A,B"}},
 	}
@@ -113,10 +114,10 @@ func TestRender_SurgeLike_GroupNameInvalid(t *testing.T) {
 func TestRender_Quanx_TagCommaQuotedAndRuleTypeMapping(t *testing.T) {
 	res := &compiler.Result{
 		Proxies: []model.Proxy{
-			{Type: "ss", Name: "a,b", Server: "example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pass"},
+			{ID: "p1", Type: "ss", Name: "a,b", Server: "example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pass"},
 		},
 		Groups: []model.Group{
-			{Name: "PROXY", Type: "select", Members: []string{"a,b", "DIRECT", "REJECT"}},
+			{Name: "PROXY", Type: "select", Members: []model.MemberRef{proxyRef("p1"), builtinRef("DIRECT"), builtinRef("REJECT")}},
 		},
 		Rules: []model.Rule{
 			{Type: "IP-CIDR6", Value: "2001:db8::/32", Action: "PROXY", NoResolve: true},
@@ -145,10 +146,10 @@ func TestRender_Quanx_TagCommaQuotedAndRuleTypeMapping(t *testing.T) {
 func TestRender_Quanx_IPv6ServerBracketed(t *testing.T) {
 	res := &compiler.Result{
 		Proxies: []model.Proxy{
-			{Type: "ss", Name: "v6", Server: "2001:db8::1", Port: 8388, Cipher: "aes-128-gcm", Password: "pass"},
+			{ID: "p1", Type: "ss", Name: "v6", Server: "2001:db8::1", Port: 8388, Cipher: "aes-128-gcm", Password: "pass"},
 		},
 		Groups: []model.Group{
-			{Name: "PROXY", Type: "select", Members: []string{"v6"}},
+			{Name: "PROXY", Type: "select", Members: []model.MemberRef{proxyRef("p1")}},
 		},
 		Rules: []model.Rule{
 			{Type: "MATCH", Action: "PROXY"},
@@ -162,4 +163,61 @@ func TestRender_Quanx_IPv6ServerBracketed(t *testing.T) {
 	if !strings.Contains(blocks.Proxies, "shadowsocks = [2001:db8::1]:8388") {
 		t.Fatalf("IPv6 server should be bracketed, got:\n%s", blocks.Proxies)
 	}
+}
+
+func TestRender_RejectsMissingProxyID(t *testing.T) {
+	res := &compiler.Result{
+		Proxies: []model.Proxy{
+			{Type: "ss", Name: "n1", Server: "example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pass"},
+		},
+		Groups: []model.Group{
+			{Name: "PROXY", Type: "select", Members: []model.MemberRef{builtinRef("DIRECT")}},
+		},
+		Rules: []model.Rule{{Type: "MATCH", Action: "PROXY"}},
+	}
+
+	_, err := Render(TargetClash, res)
+	var re *RenderError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *RenderError, got %T: %v", err, err)
+	}
+	if re.AppError.Code != "INVALID_ARGUMENT" {
+		t.Fatalf("code=%q, want=%q", re.AppError.Code, "INVALID_ARGUMENT")
+	}
+	if !strings.Contains(re.AppError.Message, "proxy ID") {
+		t.Fatalf("message=%q, want mention proxy ID", re.AppError.Message)
+	}
+}
+
+func TestRender_RejectsDuplicateProxyID(t *testing.T) {
+	res := &compiler.Result{
+		Proxies: []model.Proxy{
+			{ID: "p1", Type: "ss", Name: "n1", Server: "example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pass"},
+			{ID: "p1", Type: "ss", Name: "n2", Server: "example.net", Port: 8389, Cipher: "aes-128-gcm", Password: "pass"},
+		},
+		Groups: []model.Group{
+			{Name: "PROXY", Type: "select", Members: []model.MemberRef{proxyRef("p1")}},
+		},
+		Rules: []model.Rule{{Type: "MATCH", Action: "PROXY"}},
+	}
+
+	_, err := Render(TargetClash, res)
+	var re *RenderError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *RenderError, got %T: %v", err, err)
+	}
+	if re.AppError.Code != "INVALID_ARGUMENT" {
+		t.Fatalf("code=%q, want=%q", re.AppError.Code, "INVALID_ARGUMENT")
+	}
+	if !strings.Contains(re.AppError.Message, "必须唯一") {
+		t.Fatalf("message=%q, want duplicate ID error", re.AppError.Message)
+	}
+}
+
+func proxyRef(id string) model.MemberRef {
+	return model.MemberRef{Kind: model.MemberRefProxy, Value: id}
+}
+
+func builtinRef(name string) model.MemberRef {
+	return model.MemberRef{Kind: model.MemberRefBuiltin, Value: name}
 }

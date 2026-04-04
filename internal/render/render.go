@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/John-Robertt/subconverter-go/internal/compiler"
 	"github.com/John-Robertt/subconverter-go/internal/model"
@@ -17,11 +18,11 @@ const (
 )
 
 type Blocks struct {
-	Proxies string
-	Groups  string
+	Proxies       string
+	Groups        string
 	RuleProviders string // optional: used by Clash rule-providers
-	Rulesets string // optional: used by targets that support remote ruleset sections (e.g. QuanX)
-	Rules   string
+	Rulesets      string // optional: used by targets that support remote ruleset sections (e.g. QuanX)
+	Rules         string
 }
 
 type RenderError struct {
@@ -51,6 +52,9 @@ func Render(target Target, res *compiler.Result) (Blocks, error) {
 			},
 		}
 	}
+	if err := validateRenderInput(res); err != nil {
+		return Blocks{}, err
+	}
 	switch target {
 	case TargetClash:
 		return renderClash(res)
@@ -69,4 +73,34 @@ func Render(target Target, res *compiler.Result) (Blocks, error) {
 			},
 		}
 	}
+}
+
+func validateRenderInput(res *compiler.Result) error {
+	// Renderers resolve typed group members by proxy ID. Fail fast here so direct
+	// callers get a clear contract error instead of renderer-specific fallout.
+	seenProxyIDs := make(map[string]struct{}, len(res.Proxies))
+	for i, p := range res.Proxies {
+		if strings.TrimSpace(p.ID) == "" {
+			return &RenderError{
+				AppError: model.AppError{
+					Code:    "INVALID_ARGUMENT",
+					Message: "render input 的 proxy ID 不能为空",
+					Stage:   "render",
+					Snippet: fmt.Sprintf("proxies[%d]: %s", i, p.Name),
+				},
+			}
+		}
+		if _, ok := seenProxyIDs[p.ID]; ok {
+			return &RenderError{
+				AppError: model.AppError{
+					Code:    "INVALID_ARGUMENT",
+					Message: "render input 的 proxy ID 必须唯一",
+					Stage:   "render",
+					Snippet: p.ID,
+				},
+			}
+		}
+		seenProxyIDs[p.ID] = struct{}{}
+	}
+	return nil
 }

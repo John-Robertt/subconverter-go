@@ -1,10 +1,21 @@
 package model
 
+const (
+	MemberRefProxy   = "proxy"
+	MemberRefGroup   = "group"
+	MemberRefBuiltin = "builtin"
+)
+
+type MemberRef struct {
+	Kind  string
+	Value string
+}
+
 type Group struct {
 	Name string
 	Type string // "select" | "url-test"
 
-	Members []string // proxy names / group names / DIRECT / REJECT
+	Members []MemberRef
 
 	// url-test only
 	TestURL     string

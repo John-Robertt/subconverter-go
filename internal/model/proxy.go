@@ -8,6 +8,10 @@ type KV struct {
 // Proxy is the minimal node representation used by the compiler pipeline.
 // v1 only produces Type=="ss".
 type Proxy struct {
+	// ID is the stable internal identity of a compiled proxy. Parsers do not
+	// need to fill it; the compiler derives it from the normalized proxy fields.
+	ID string
+
 	Type string
 
 	// Name comes from subscription fragment (#name). It may be empty and is not

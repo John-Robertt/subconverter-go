@@ -16,10 +16,15 @@
 建议把这些类型放在一个极薄的包里（避免循环依赖），例如：
 
 - `internal/model`
-  - `Proxy`：`Name, Type, Server, Port, Cipher, Password, Plugin, PluginOpts, UDP, TFO ...`
-  - `Group`：`Name, Type, Members[] | Regex/URL/Interval/Tolerance ...`
+  - `Proxy`：`ID, Name, Type, Server, Port, Cipher, Password, Plugin, PluginOpts ...`
+  - `MemberRef`：`Kind(proxy|group|builtin), Value(proxyID|groupName|DIRECT|REJECT)`
+  - `Group`：`Name, Type, Members[] | URL/Interval/Tolerance ...`
   - `Rule`：`Type, Value, Action, NoResolve`
   - `AppError`：与 `../spec/SPEC_HTTP_API.md` 对齐的结构化错误（`code/message/stage/url/line/snippet/hint`）
+
+关键约束：
+- `Proxy.ID` 是内部唯一身份；`Proxy.Name` 是展示名。
+- `Group.Members` 保存引用，不直接把节点名当内部主键。
 
 实现层的所有模块都只做两件事：
 1) 把文本解析为这些结构体  
@@ -56,12 +61,13 @@
 
 - `internal/compiler`
   - 把 `ProfileSpec + []Proxy` 编译为最终 IR：`[]Proxy + []Group + []Rule`
-  - 负责：去重/命名冲突处理/排序/`@all` 展开/引用校验/兜底 MATCH 校验
+  - 负责：字段规范化、`proxyID` 生成、去重、展示名冲突处理、排序、`@all` 展开、成员引用编译、引用校验、兜底 MATCH 校验
   - 行为按 `../spec/SPEC_DETERMINISM.md` 与 `../spec/SPEC_PROFILE_YAML.md`
 
 - `internal/render`
   - 目标渲染：把 IR 渲染为三段文本块（proxies/groups/rules）
   - 可按 target 分子包：`internal/render/clash`、`internal/render/surge`、`internal/render/shadowrocket`、`internal/render/quanx`
+  - 对 `proxy` 成员必须先做 `proxyID -> 目标名称表示` 的映射，再输出到对应 target 语法
   - 行为按 `../spec/SPEC_RENDER_TARGETS.md`
 
 - `internal/template`
@@ -76,6 +82,7 @@ v1 最容易走偏的点是过早“插件化/可配置化”。建议避免：
 - 把所有字段抽象成 `map[string]any`（会让错误定位与稳定性崩掉）
 - 把 IR 做成“覆盖所有客户端字段”的巨型结构（会引入大量分支与特殊情况）
 - 过早引入模板语言或 DSL（直接把服务端变成执行器，安全与可测试性会恶化）
+- 继续把 `Proxy.Name` 当成内部主键（会把“展示问题”重新耦合进“身份问题”）
 
 v1 的正确扩展方式：
 - 新输入：新增一个 parser（产出同一个 `[]Proxy`）

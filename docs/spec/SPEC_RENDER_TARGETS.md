@@ -18,8 +18,13 @@
 ## 1. 输入：核心中间态（IR）假设
 
 渲染器接收编译后的结构化数据：
-- `Proxies[]`：仅包含 `type=ss`
-- `Groups[]`：仅包含 `type=select|url-test`
+- `Proxies[]`：仅包含 `type=ss`，并且每个 Proxy 都具备：
+  - 内部唯一标识 `proxyID`
+  - 最终展示名 `Name`
+- `Groups[]`：仅包含 `type=select|url-test`，并且成员为类型化引用：
+  - `proxy`：引用某个 `proxyID`
+  - `group`：引用某个策略组名
+  - `builtin`：引用 `DIRECT` / `REJECT`
 - `Rules[]`：仅包含 v1 规则类型（不同 target 支持矩阵不同）：  
   `DOMAIN/DOMAIN-SUFFIX/DOMAIN-KEYWORD/IP-CIDR/IP-CIDR6/GEOIP/PROCESS-NAME/URL-REGEX/MATCH`
 - `RulesetRefs[]`：profile 中 `ruleset` 的远程引用信息（`ACTION,URL`），用于输出“远程 ruleset 引用”（不展开内容）：
@@ -28,8 +33,8 @@
   - Quantumult X：渲染为 `[filter_remote]` 的远程引用行
 
 并且应已满足《输出稳定性与规范化规范》：
-- 节点已去重、命名唯一、顺序稳定（按订阅合并顺序）
-- `@all` 已展开为具体节点名（或编译器可在渲染时展开，但必须等价且稳定）
+- 节点已去重、`proxyID` 已稳定生成、展示名已唯一化、顺序稳定（按订阅合并顺序）
+- `@all` 已展开为具体 `proxy` 引用（或编译器可在渲染时展开，但必须等价且稳定）
 
 ---
 
@@ -96,6 +101,10 @@ v1 支持：
   - 节点名
   - 其他组名
   - 内置 action：`DIRECT` / `REJECT`
+
+渲染约束：
+- 当组成员是 `proxy` 引用时，renderer 必须先通过 `proxyID` 查到该节点的最终 `Name`，再写入 `proxies` 列表。
+- 当组成员是 `group` 或 `builtin` 引用时，renderer 直接输出对应字符串。
 
 `url-test` 额外字段：
 - `url`：测试 URL
@@ -219,6 +228,10 @@ SS plugin（Surge）：
 - 其他组名
 - `DIRECT` / `REJECT`
 
+渲染约束：
+- 当组成员是 `proxy` 引用时，renderer 必须先通过 `proxyID` 查到该节点在 Surge/Shadowrocket 语法下的最终名称表示（必要时带双引号），再写入成员列表。
+- 当组成员是 `group` 或 `builtin` 引用时，renderer 直接输出对应字符串。
+
 ### 4.4 rulesBlock（写入 `[Rule]` 段）
 
 v1 规定 Surge/Shadowrocket 的规则输出包含两部分（顺序必须固定）：
@@ -298,6 +311,10 @@ url-latency-benchmark=<GROUP>, <MEMBER_1>, <MEMBER_2>, ..., check-interval=<SEC>
   - `DIRECT` -> `direct`
   - `REJECT` -> `reject`
 
+渲染约束：
+- 当组成员是 `proxy` 引用时，renderer 必须先通过 `proxyID` 查到该节点在 QuanX 语法下的最终 tag 表示（必要时带双引号），再写入成员列表。
+- 当组成员是 `group` 或 `builtin` 引用时，renderer 按 QuanX 语法输出对应字符串。
+
 ### 6.3 rulesetsBlock（写入 `[filter_remote]` 段）
 
 QuanX 支持在 `[filter_remote]` 中声明远程规则集，并通过 `force-policy` 绑定策略。
@@ -327,3 +344,6 @@ TYPE,VALUE,ACTION[,no-resolve]
 - `MATCH` -> `FINAL`（两字段：`FINAL,<ACTION>`）
 - `IP-CIDR6` -> `IP6-CIDR`
 - `DIRECT` -> `direct`；`REJECT` -> `reject`
+
+规则 action 约束：
+- `Rule.Action` 与 `RulesetRefs.Action` 继续引用策略组名或内置动作，不支持 `proxyID`。

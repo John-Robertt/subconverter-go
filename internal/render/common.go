@@ -73,3 +73,25 @@ func parseSSObfsPlugin(p model.Proxy) (plugin string, mode string, host string, 
 
 	return "obfs", obfsMode, obfsHost, nil
 }
+
+func missingProxyRefError(proxyID string) error {
+	return &RenderError{
+		AppError: model.AppError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "策略组引用了不存在的 proxyID",
+			Stage:   "render",
+			Snippet: proxyID,
+		},
+	}
+}
+
+func invalidMemberRefError(kind string, value string) error {
+	return &RenderError{
+		AppError: model.AppError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "策略组成员引用类型不合法",
+			Stage:   "render",
+			Snippet: kind + ":" + value,
+		},
+	}
+}

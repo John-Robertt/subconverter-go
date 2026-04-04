@@ -1,6 +1,8 @@
 package compiler
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -136,6 +138,7 @@ func compileProxies(in []model.Proxy) ([]model.Proxy, error) {
 	deduped := make([]model.Proxy, 0, len(normalized))
 	for _, p := range normalized {
 		key := dedupKey(p)
+		p.ID = proxyIDFromKey(key)
 		if _, ok := seen[key]; ok {
 			continue
 		}
@@ -245,34 +248,34 @@ func dedupKey(p model.Proxy) string {
 	return b.String()
 }
 
-func compileGroups(proxies []model.Proxy, groupSpecs []profile.GroupSpec) ([]model.Group, error) {
-	allNames := make([]string, 0, len(proxies))
-	for _, p := range proxies {
-		allNames = append(allNames, p.Name)
-	}
+func proxyIDFromKey(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])
+}
 
+func compileGroups(proxies []model.Proxy, groupSpecs []profile.GroupSpec) ([]model.Group, error) {
 	out := make([]model.Group, 0, len(groupSpecs))
 	for _, gs := range groupSpecs {
 		switch gs.Type {
 		case "select":
-			var members []string
+			var members []model.MemberRef
 			if len(gs.Members) > 0 {
-				// Explicit member list form: []A[]B[]@all...
-				members = make([]string, 0, len(gs.Members)+len(allNames))
+				// Explicit member list form: []GROUP[]DIRECT[]@all...
+				members = make([]model.MemberRef, 0, len(gs.Members)+len(proxies))
 				for _, m := range gs.Members {
 					if m == "@all" {
-						members = append(members, allNames...)
-					} else {
-						members = append(members, m)
+						members = append(members, allProxyMemberRefs(proxies)...)
+						continue
 					}
+					members = append(members, explicitMemberRef(m))
 				}
 			} else if gs.Regex != nil {
 				// Regex filter form: <NAME>`select`(REGEX)
 				// Members are matched proxies only, in subscription merge order.
-				members = make([]string, 0)
-				for _, name := range allNames {
-					if gs.Regex.MatchString(name) {
-						members = append(members, name)
+				members = make([]model.MemberRef, 0)
+				for _, p := range proxies {
+					if gs.Regex.MatchString(p.Name) {
+						members = append(members, proxyMemberRef(p.ID))
 					}
 				}
 			} else {
@@ -294,10 +297,10 @@ func compileGroups(proxies []model.Proxy, groupSpecs []profile.GroupSpec) ([]mod
 				Members: members,
 			})
 		case "url-test":
-			members := make([]string, 0)
-			for _, name := range allNames {
-				if gs.Regex != nil && gs.Regex.MatchString(name) {
-					members = append(members, name)
+			members := make([]model.MemberRef, 0)
+			for _, p := range proxies {
+				if gs.Regex != nil && gs.Regex.MatchString(p.Name) {
+					members = append(members, proxyMemberRef(p.ID))
 				}
 			}
 			if len(members) == 0 {
@@ -331,6 +334,25 @@ func compileGroups(proxies []model.Proxy, groupSpecs []profile.GroupSpec) ([]mod
 		}
 	}
 	return out, nil
+}
+
+func allProxyMemberRefs(proxies []model.Proxy) []model.MemberRef {
+	refs := make([]model.MemberRef, 0, len(proxies))
+	for _, p := range proxies {
+		refs = append(refs, proxyMemberRef(p.ID))
+	}
+	return refs
+}
+
+func proxyMemberRef(id string) model.MemberRef {
+	return model.MemberRef{Kind: model.MemberRefProxy, Value: id}
+}
+
+func explicitMemberRef(raw string) model.MemberRef {
+	if raw == "DIRECT" || raw == "REJECT" {
+		return model.MemberRef{Kind: model.MemberRefBuiltin, Value: raw}
+	}
+	return model.MemberRef{Kind: model.MemberRefGroup, Value: raw}
 }
 
 func compileRules(groupNameSet map[string]struct{}, prof *profile.Spec) ([]model.Rule, []RulesetRef, error) {

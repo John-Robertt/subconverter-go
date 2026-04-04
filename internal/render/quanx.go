@@ -17,7 +17,7 @@ func renderQuanx(res *compiler.Result) (Blocks, error) {
 		if err != nil {
 			return Blocks{}, err
 		}
-		proxyTagRep[p.Name] = rep
+		proxyTagRep[p.ID] = rep
 	}
 
 	proxyLines := make([]string, 0, len(res.Proxies))
@@ -33,7 +33,7 @@ func renderQuanx(res *compiler.Result) (Blocks, error) {
 			}
 		}
 
-		tag := proxyTagRep[p.Name]
+		tag := proxyTagRep[p.ID]
 		line := fmt.Sprintf("shadowsocks = %s, method=%s, password=%s, tag=%s", quanxServerPort(p.Server, p.Port), strings.ToLower(p.Cipher), p.Password, tag)
 		if p.PluginName != "" {
 			_, mode, host, err := parseSSObfsPlugin(p)
@@ -60,8 +60,12 @@ func renderQuanx(res *compiler.Result) (Blocks, error) {
 			b.WriteString("static=")
 			b.WriteString(g.Name)
 			for _, m := range g.Members {
+				memberName, err := quanxMemberName(m, proxyTagRep)
+				if err != nil {
+					return Blocks{}, err
+				}
 				b.WriteString(", ")
-				b.WriteString(quanxMemberName(m, proxyTagRep))
+				b.WriteString(memberName)
 			}
 			groupLines = append(groupLines, b.String())
 		case "url-test":
@@ -69,8 +73,12 @@ func renderQuanx(res *compiler.Result) (Blocks, error) {
 			b.WriteString("url-latency-benchmark=")
 			b.WriteString(g.Name)
 			for _, m := range g.Members {
+				memberName, err := quanxMemberName(m, proxyTagRep)
+				if err != nil {
+					return Blocks{}, err
+				}
 				b.WriteString(", ")
-				b.WriteString(quanxMemberName(m, proxyTagRep))
+				b.WriteString(memberName)
 			}
 			b.WriteString(", check-interval=")
 			b.WriteString(strconv.Itoa(g.IntervalSec))
@@ -198,17 +206,27 @@ func quanxPolicyNameOK(name string) error {
 	return nil
 }
 
-func quanxMemberName(member string, proxyTagRep map[string]string) string {
-	switch member {
-	case "DIRECT":
-		return "direct"
-	case "REJECT":
-		return "reject"
+func quanxMemberName(member model.MemberRef, proxyTagRep map[string]string) (string, error) {
+	switch member.Kind {
+	case model.MemberRefProxy:
+		rep, ok := proxyTagRep[member.Value]
+		if !ok {
+			return "", missingProxyRefError(member.Value)
+		}
+		return rep, nil
+	case model.MemberRefGroup:
+		return member.Value, nil
+	case model.MemberRefBuiltin:
+		switch member.Value {
+		case "DIRECT":
+			return "direct", nil
+		case "REJECT":
+			return "reject", nil
+		}
+		return "", invalidMemberRefError(member.Kind, member.Value)
+	default:
+		return "", invalidMemberRefError(member.Kind, member.Value)
 	}
-	if rep, ok := proxyTagRep[member]; ok {
-		return rep
-	}
-	return member
 }
 
 func quanxActionName(action string) (string, error) {

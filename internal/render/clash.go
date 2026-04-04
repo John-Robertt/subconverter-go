@@ -12,6 +12,11 @@ import (
 )
 
 func renderClash(res *compiler.Result) (Blocks, error) {
+	proxyNames := make(map[string]string, len(res.Proxies))
+	for _, p := range res.Proxies {
+		proxyNames[p.ID] = p.Name
+	}
+
 	proxyLines := make([]string, 0, len(res.Proxies)*6)
 	for _, p := range res.Proxies {
 		if p.Type != "ss" {
@@ -54,7 +59,11 @@ func renderClash(res *compiler.Result) (Blocks, error) {
 		groupLines = append(groupLines, "  type: "+yamlDQ(g.Type))
 		groupLines = append(groupLines, "  proxies:")
 		for _, m := range g.Members {
-			groupLines = append(groupLines, "    - "+yamlDQ(m))
+			name, err := clashMemberName(m, proxyNames)
+			if err != nil {
+				return Blocks{}, err
+			}
+			groupLines = append(groupLines, "    - "+yamlDQ(name))
 		}
 		if g.Type == "url-test" {
 			groupLines = append(groupLines, "  url: "+yamlDQ(g.TestURL))
@@ -79,11 +88,26 @@ func renderClash(res *compiler.Result) (Blocks, error) {
 	}
 
 	return Blocks{
-		Proxies: strings.Join(proxyLines, "\n"),
-		Groups:  strings.Join(groupLines, "\n"),
+		Proxies:       strings.Join(proxyLines, "\n"),
+		Groups:        strings.Join(groupLines, "\n"),
 		RuleProviders: ruleProvidersBlock,
-		Rules:   strings.Join(ruleLines, "\n"),
+		Rules:         strings.Join(ruleLines, "\n"),
 	}, nil
+}
+
+func clashMemberName(member model.MemberRef, proxyNames map[string]string) (string, error) {
+	switch member.Kind {
+	case model.MemberRefProxy:
+		name, ok := proxyNames[member.Value]
+		if !ok {
+			return "", missingProxyRefError(member.Value)
+		}
+		return name, nil
+	case model.MemberRefGroup, model.MemberRefBuiltin:
+		return member.Value, nil
+	default:
+		return "", invalidMemberRefError(member.Kind, member.Value)
+	}
 }
 
 func yamlDQ(s string) string {

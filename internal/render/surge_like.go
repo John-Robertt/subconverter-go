@@ -29,7 +29,7 @@ func renderSurgeLike(res *compiler.Result, isSurge bool) (Blocks, error) {
 		if err != nil {
 			return Blocks{}, err
 		}
-		proxyNameRep[p.Name] = rep
+		proxyNameRep[p.ID] = rep
 	}
 
 	for _, p := range res.Proxies {
@@ -44,7 +44,7 @@ func renderSurgeLike(res *compiler.Result, isSurge bool) (Blocks, error) {
 			}
 		}
 
-		name := proxyNameRep[p.Name]
+		name := proxyNameRep[p.ID]
 		line := fmt.Sprintf("%s = ss, %s, %d, encrypt-method=%s, password=%s", name, p.Server, p.Port, strings.ToLower(p.Cipher), p.Password)
 
 		if p.PluginName != "" {
@@ -72,8 +72,12 @@ func renderSurgeLike(res *compiler.Result, isSurge bool) (Blocks, error) {
 			b.WriteString(g.Name)
 			b.WriteString(" = select")
 			for _, m := range g.Members {
+				memberName, err := surgeMemberName(m, proxyNameRep)
+				if err != nil {
+					return Blocks{}, err
+				}
 				b.WriteString(", ")
-				b.WriteString(surgeMemberName(m, proxyNameRep))
+				b.WriteString(memberName)
 			}
 			groupLines = append(groupLines, b.String())
 		case "url-test":
@@ -81,8 +85,12 @@ func renderSurgeLike(res *compiler.Result, isSurge bool) (Blocks, error) {
 			b.WriteString(g.Name)
 			b.WriteString(" = url-test")
 			for _, m := range g.Members {
+				memberName, err := surgeMemberName(m, proxyNameRep)
+				if err != nil {
+					return Blocks{}, err
+				}
 				b.WriteString(", ")
-				b.WriteString(surgeMemberName(m, proxyNameRep))
+				b.WriteString(memberName)
 			}
 			b.WriteString(", url=")
 			b.WriteString(g.TestURL)
@@ -211,11 +219,17 @@ func surgeGroupNameOK(name string) error {
 	return nil
 }
 
-func surgeMemberName(member string, proxyNameRep map[string]string) string {
-	// If it's a proxy name, use its representable form.
-	if rep, ok := proxyNameRep[member]; ok {
-		return rep
+func surgeMemberName(member model.MemberRef, proxyNameRep map[string]string) (string, error) {
+	switch member.Kind {
+	case model.MemberRefProxy:
+		rep, ok := proxyNameRep[member.Value]
+		if !ok {
+			return "", missingProxyRefError(member.Value)
+		}
+		return rep, nil
+	case model.MemberRefGroup, model.MemberRefBuiltin:
+		return member.Value, nil
+	default:
+		return "", invalidMemberRefError(member.Kind, member.Value)
 	}
-	// Otherwise it's DIRECT/REJECT or group name, keep as-is.
-	return member
 }
