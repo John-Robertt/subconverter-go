@@ -107,3 +107,44 @@
 - `../spec/SPEC_PROFILE_YAML.md`
 - `../spec/SPEC_RENDER_TARGETS.md`
 - `../design/ARCHITECTURE.md`
+
+---
+
+## D006：链式代理通过派生节点表达，而不是暴露裸 `custom_proxy`
+
+背景：
+- 用户需要“自定义代理通过订阅节点访问”的链式能力。
+- 若把 `custom_proxy` 直接输出到最终配置，用户会看到一个理论存在但实际不可直连的节点，容易误选，也不利于定位问题。
+
+决策：
+- `custom_proxy` 只作为编译输入，不直接进入最终输出。
+- 编译器按 `(custom_proxy, subscription_proxy)` 生成链式派生节点，并保留原始订阅节点用于对照诊断。
+
+影响：
+- 优点：最终输出中的每个节点都可直接使用；链路关系落在单节点上，渲染器实现简单。
+- 缺点：需要新增派生节点命名、排序、自动诊断组等稳定性规则。
+
+相关规范：
+- `../spec/SPEC_PROFILE_YAML.md`
+- `../spec/SPEC_DETERMINISM.md`
+- `../spec/SPEC_RENDER_TARGETS.md`
+
+---
+
+## D007：`CHAIN-` 保留给自动诊断组
+
+背景：
+- 链式代理需要一个稳定、可预测的诊断入口，便于用户在客户端里直接比较“原始节点”与“链式派生节点”。
+- 如果允许用户自定义同名前缀组名，就需要额外的重命名和歧义处理规则。
+
+决策：
+- 自动诊断组统一命名为 `CHAIN-<custom_proxy.name>`。
+- `CHAIN-` 作为保留前缀，用户定义的策略组名不得使用。
+
+影响：
+- 优点：命名简单、稳定，可直接写进文档与测试。
+- 缺点：减少了一小部分用户自定义组名空间。
+
+相关规范：
+- `../spec/SPEC_PROFILE_YAML.md`
+- `../spec/SPEC_DETERMINISM.md`

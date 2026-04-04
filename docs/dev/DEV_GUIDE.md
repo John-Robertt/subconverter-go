@@ -82,8 +82,9 @@ DoD：
 - `../spec/SPEC_PROFILE_YAML.md`
 
 DoD：
-- `version/template/public_base_url/custom_proxy_group/ruleset/rule` 完整解析与最小校验
+- `version/template/public_base_url/custom_proxy/custom_proxy_group/proxy_chain/ruleset/rule` 完整解析与最小校验
 - `custom_proxy_group` 子集（select/url-test）解析正确；引用与 regex 错误可定位
+- `custom_proxy` / `proxy_chain` 解析正确；目标能力约束与保留前缀校验可定位
 
 建议测试：
 - 好 profile + 多种坏 profile（缺字段/枚举值错/URL 非法/regex 不可编译/空匹配）。
@@ -98,6 +99,9 @@ DoD：
 - 订阅合并顺序、去重 key、命名冲突后缀、排序规则都按规范
 - 策略组命名空间校验（组名唯一且不与节点冲突）
 - `@all` 展开与 `url-test` 筛选顺序稳定
+- `proxy_chain type=group` 的递归展开与环检测按规范
+- 链式派生节点生成、命名与排序稳定
+- 自动诊断组 `CHAIN-<custom_proxy.name>` 生成正确
 - 最终必须有兜底 `MATCH,<ACTION>`，否则报错
 
 建议测试：
@@ -111,6 +115,8 @@ DoD：
 
 DoD：
 - 能从 IR 生成 `proxiesBlock/groupsBlock/rulesBlock`
+- Clash `dialer-proxy` 与 Surge `underlying-proxy` 渲染正确
+- Shadowrocket / QuanX 遇到链式代理特性时返回 `UNSUPPORTED_TARGET_FEATURE`
 - Surge/Shadowrocket 的名称可表示性规则生效（逗号/引号/双引号报错）
 - Quantumult X 的 tag/策略名可表示性规则生效（逗号引用、双引号报错）
 - `MATCH -> FINAL`（Surge/Shadowrocket）

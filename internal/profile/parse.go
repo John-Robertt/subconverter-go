@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -20,9 +21,11 @@ type Spec struct {
 	Template      map[string]string
 	PublicBaseURL string
 
-	Groups  []GroupSpec
-	Ruleset []RulesetSpec
-	Rules   []model.Rule // inline rules
+	CustomProxies []model.Proxy
+	Groups        []GroupSpec
+	ProxyChains   []ChainSpec
+	Ruleset       []RulesetSpec
+	Rules         []model.Rule // inline rules
 }
 
 type GroupSpec struct {
@@ -33,7 +36,7 @@ type GroupSpec struct {
 	// select
 	Members []string
 
-	// url-test
+	// select-regex or url-test
 	RegexRaw    string
 	Regex       *regexp.Regexp
 	TestURL     string
@@ -41,6 +44,15 @@ type GroupSpec struct {
 
 	ToleranceMS  int
 	HasTolerance bool
+}
+
+type ChainSpec struct {
+	Raw     string
+	Proxy   string
+	Type    string // all | regex | group
+	Pattern string
+	Group   string
+	Regex   *regexp.Regexp
 }
 
 type RulesetSpec struct {
@@ -89,9 +101,30 @@ type rawProfile struct {
 	Version          int               `yaml:"version"`
 	Template         map[string]string `yaml:"template"`
 	PublicBaseURL    string            `yaml:"public_base_url"`
+	CustomProxy      []rawCustomProxy  `yaml:"custom_proxy"`
 	CustomProxyGroup []string          `yaml:"custom_proxy_group"`
+	ProxyChain       []rawChainSpec    `yaml:"proxy_chain"`
 	Ruleset          []string          `yaml:"ruleset"`
 	Rule             []string          `yaml:"rule"`
+}
+
+type rawCustomProxy struct {
+	Name       string            `yaml:"name"`
+	Type       string            `yaml:"type"`
+	Server     string            `yaml:"server"`
+	Port       int               `yaml:"port"`
+	Username   string            `yaml:"username"`
+	Password   string            `yaml:"password"`
+	Cipher     string            `yaml:"cipher"`
+	Plugin     string            `yaml:"plugin"`
+	PluginOpts map[string]string `yaml:"plugin_opts"`
+}
+
+type rawChainSpec struct {
+	Proxy   string `yaml:"proxy"`
+	Type    string `yaml:"type"`
+	Pattern string `yaml:"pattern"`
+	Group   string `yaml:"group"`
 }
 
 // ParseProfileYAML parses and validates a profile YAML document.
@@ -114,26 +147,22 @@ func ParseProfileYAML(sourceURL string, content string, requiredTarget string) (
 	}
 
 	if rp.Version != 1 {
-		return nil, &ParseError{
-			AppError: model.AppError{
-				Code:    "PROFILE_VALIDATE_ERROR",
-				Message: "profile version 必须为 1",
-				Stage:   "parse_profile",
-				URL:     sourceURL,
-			},
-		}
+		return nil, &ParseError{AppError: model.AppError{
+			Code:    "PROFILE_VALIDATE_ERROR",
+			Message: "profile version 必须为 1",
+			Stage:   "parse_profile",
+			URL:     sourceURL,
+		}}
 	}
 
 	if len(rp.Template) == 0 {
-		return nil, &ParseError{
-			AppError: model.AppError{
-				Code:    "PROFILE_VALIDATE_ERROR",
-				Message: "template 不能为空",
-				Stage:   "parse_profile",
-				URL:     sourceURL,
-				Hint:    "expected: template: {clash: ..., shadowrocket: ..., surge: ...}",
-			},
-		}
+		return nil, &ParseError{AppError: model.AppError{
+			Code:    "PROFILE_VALIDATE_ERROR",
+			Message: "template 不能为空",
+			Stage:   "parse_profile",
+			URL:     sourceURL,
+			Hint:    "expected: template: {clash: ..., shadowrocket: ..., surge: ...}",
+		}}
 	}
 
 	allowedTargets := map[string]struct{}{
@@ -144,14 +173,12 @@ func ParseProfileYAML(sourceURL string, content string, requiredTarget string) (
 	}
 	for k, v := range rp.Template {
 		if _, ok := allowedTargets[k]; !ok {
-			return nil, &ParseError{
-				AppError: model.AppError{
-					Code:    "PROFILE_VALIDATE_ERROR",
-					Message: fmt.Sprintf("template key 不支持：%s", k),
-					Stage:   "parse_profile",
-					URL:     sourceURL,
-				},
-			}
+			return nil, &ParseError{AppError: model.AppError{
+				Code:    "PROFILE_VALIDATE_ERROR",
+				Message: fmt.Sprintf("template key 不支持：%s", k),
+				Stage:   "parse_profile",
+				URL:     sourceURL,
+			}}
 		}
 		if err := validateHTTPURL(v); err != nil {
 			return nil, &ParseError{
@@ -168,14 +195,12 @@ func ParseProfileYAML(sourceURL string, content string, requiredTarget string) (
 	}
 	if requiredTarget != "" {
 		if _, ok := rp.Template[requiredTarget]; !ok {
-			return nil, &ParseError{
-				AppError: model.AppError{
-					Code:    "PROFILE_VALIDATE_ERROR",
-					Message: fmt.Sprintf("template 缺少 target=%s", requiredTarget),
-					Stage:   "parse_profile",
-					URL:     sourceURL,
-				},
-			}
+			return nil, &ParseError{AppError: model.AppError{
+				Code:    "PROFILE_VALIDATE_ERROR",
+				Message: fmt.Sprintf("template 缺少 target=%s", requiredTarget),
+				Stage:   "parse_profile",
+				URL:     sourceURL,
+			}}
 		}
 	}
 
@@ -193,6 +218,49 @@ func ParseProfileYAML(sourceURL string, content string, requiredTarget string) (
 				Cause: err,
 			}
 		}
+	}
+
+	customProxies := make([]model.Proxy, 0, len(rp.CustomProxy))
+	customProxyNames := make(map[string]struct{}, len(rp.CustomProxy))
+	for _, raw := range rp.CustomProxy {
+		p, err := parseCustomProxy(raw, requiredTarget)
+		if err != nil {
+			var de *directiveError
+			if errors.As(err, &de) {
+				return nil, &ParseError{
+					AppError: model.AppError{
+						Code:    de.Code,
+						Message: de.Message,
+						Stage:   "parse_profile",
+						URL:     sourceURL,
+						Snippet: customProxySnippet(raw),
+						Hint:    de.Hint,
+					},
+					Cause: de.Cause,
+				}
+			}
+			return nil, &ParseError{
+				AppError: model.AppError{
+					Code:    "CUSTOM_PROXY_VALIDATE_ERROR",
+					Message: "custom_proxy 解析失败",
+					Stage:   "parse_profile",
+					URL:     sourceURL,
+					Snippet: customProxySnippet(raw),
+				},
+				Cause: err,
+			}
+		}
+		if _, ok := customProxyNames[p.Name]; ok {
+			return nil, &ParseError{AppError: model.AppError{
+				Code:    "CUSTOM_PROXY_VALIDATE_ERROR",
+				Message: fmt.Sprintf("重复的 custom_proxy.name：%s", p.Name),
+				Stage:   "parse_profile",
+				URL:     sourceURL,
+				Snippet: customProxySnippet(raw),
+			}}
+		}
+		customProxyNames[p.Name] = struct{}{}
+		customProxies = append(customProxies, p)
 	}
 
 	groups := make([]GroupSpec, 0, len(rp.CustomProxyGroup))
@@ -231,46 +299,56 @@ func ParseProfileYAML(sourceURL string, content string, requiredTarget string) (
 		groups = append(groups, g)
 	}
 
-	// Validate group names: non-empty, unique, not reserved.
 	groupNames := make(map[string]struct{}, len(groups))
 	for _, g := range groups {
 		if g.Name == "" {
-			return nil, &ParseError{
-				AppError: model.AppError{
-					Code:    "GROUP_PARSE_ERROR",
-					Message: "策略组名不能为空",
-					Stage:   "parse_profile",
-					URL:     sourceURL,
-					Snippet: g.Raw,
-				},
-			}
+			return nil, &ParseError{AppError: model.AppError{
+				Code:    "GROUP_PARSE_ERROR",
+				Message: "策略组名不能为空",
+				Stage:   "parse_profile",
+				URL:     sourceURL,
+				Snippet: g.Raw,
+			}}
 		}
 		if g.Name == "DIRECT" || g.Name == "REJECT" {
-			return nil, &ParseError{
-				AppError: model.AppError{
-					Code:    "PROFILE_VALIDATE_ERROR",
-					Message: "策略组名不能使用保留名 DIRECT/REJECT",
-					Stage:   "parse_profile",
-					URL:     sourceURL,
-					Snippet: g.Raw,
-				},
-			}
+			return nil, &ParseError{AppError: model.AppError{
+				Code:    "PROFILE_VALIDATE_ERROR",
+				Message: "策略组名不能使用保留名 DIRECT/REJECT",
+				Stage:   "parse_profile",
+				URL:     sourceURL,
+				Snippet: g.Raw,
+			}}
+		}
+		if strings.HasPrefix(g.Name, "CHAIN-") {
+			return nil, &ParseError{AppError: model.AppError{
+				Code:    "PROFILE_VALIDATE_ERROR",
+				Message: "策略组名不能使用保留前缀 CHAIN-",
+				Stage:   "parse_profile",
+				URL:     sourceURL,
+				Snippet: g.Raw,
+			}}
 		}
 		if _, ok := groupNames[g.Name]; ok {
-			return nil, &ParseError{
-				AppError: model.AppError{
-					Code:    "PROFILE_VALIDATE_ERROR",
-					Message: fmt.Sprintf("重复的策略组名：%s", g.Name),
-					Stage:   "parse_profile",
-					URL:     sourceURL,
-					Snippet: g.Raw,
-				},
-			}
+			return nil, &ParseError{AppError: model.AppError{
+				Code:    "PROFILE_VALIDATE_ERROR",
+				Message: fmt.Sprintf("重复的策略组名：%s", g.Name),
+				Stage:   "parse_profile",
+				URL:     sourceURL,
+				Snippet: g.Raw,
+			}}
+		}
+		if _, ok := customProxyNames[g.Name]; ok {
+			return nil, &ParseError{AppError: model.AppError{
+				Code:    "CUSTOM_PROXY_VALIDATE_ERROR",
+				Message: fmt.Sprintf("custom_proxy.name 与策略组名冲突：%s", g.Name),
+				Stage:   "parse_profile",
+				URL:     sourceURL,
+				Snippet: g.Raw,
+			}}
 		}
 		groupNames[g.Name] = struct{}{}
 	}
 
-	// Validate select-group references.
 	for _, g := range groups {
 		if g.Type != "select" {
 			continue
@@ -280,17 +358,77 @@ func ParseProfileYAML(sourceURL string, content string, requiredTarget string) (
 				continue
 			}
 			if _, ok := groupNames[m]; !ok {
-				return nil, &ParseError{
-					AppError: model.AppError{
-						Code:    "GROUP_PARSE_ERROR",
-						Message: fmt.Sprintf("策略组引用不存在：%s", m),
-						Stage:   "parse_profile",
-						URL:     sourceURL,
-						Snippet: g.Raw,
-					},
-				}
+				return nil, &ParseError{AppError: model.AppError{
+					Code:    "GROUP_PARSE_ERROR",
+					Message: fmt.Sprintf("策略组引用不存在：%s", m),
+					Stage:   "parse_profile",
+					URL:     sourceURL,
+					Snippet: g.Raw,
+				}}
 			}
 		}
+	}
+
+	proxyChains := make([]ChainSpec, 0, len(rp.ProxyChain))
+	for _, raw := range rp.ProxyChain {
+		cs, err := parseChainSpec(raw)
+		if err != nil {
+			var de *directiveError
+			if errors.As(err, &de) {
+				return nil, &ParseError{
+					AppError: model.AppError{
+						Code:    de.Code,
+						Message: de.Message,
+						Stage:   "parse_profile",
+						URL:     sourceURL,
+						Snippet: chainSnippet(raw),
+						Hint:    de.Hint,
+					},
+					Cause: de.Cause,
+				}
+			}
+			return nil, &ParseError{
+				AppError: model.AppError{
+					Code:    "CHAIN_PARSE_ERROR",
+					Message: "proxy_chain 解析失败",
+					Stage:   "parse_profile",
+					URL:     sourceURL,
+					Snippet: chainSnippet(raw),
+				},
+				Cause: err,
+			}
+		}
+		if _, ok := customProxyNames[cs.Proxy]; !ok {
+			return nil, &ParseError{AppError: model.AppError{
+				Code:    "CHAIN_PROXY_NOT_FOUND",
+				Message: fmt.Sprintf("proxy_chain proxy 引用不存在：%s", cs.Proxy),
+				Stage:   "parse_profile",
+				URL:     sourceURL,
+				Snippet: cs.Raw,
+			}}
+		}
+		if cs.Type == "group" {
+			if _, ok := groupNames[cs.Group]; !ok {
+				return nil, &ParseError{AppError: model.AppError{
+					Code:    "CHAIN_GROUP_NOT_FOUND",
+					Message: fmt.Sprintf("proxy_chain group 引用不存在：%s", cs.Group),
+					Stage:   "parse_profile",
+					URL:     sourceURL,
+					Snippet: cs.Raw,
+				}}
+			}
+		}
+		proxyChains = append(proxyChains, cs)
+	}
+
+	if len(proxyChains) > 0 && requiredTarget != "" && requiredTarget != "clash" && requiredTarget != "surge" {
+		return nil, &ParseError{AppError: model.AppError{
+			Code:    "UNSUPPORTED_TARGET_FEATURE",
+			Message: fmt.Sprintf("target=%s 当前不支持 proxy_chain", requiredTarget),
+			Stage:   "parse_profile",
+			URL:     sourceURL,
+			Hint:    "proxy_chain only supports clash/surge",
+		}}
 	}
 
 	rulesets := make([]RulesetSpec, 0, len(rp.Ruleset))
@@ -355,22 +493,22 @@ func ParseProfileYAML(sourceURL string, content string, requiredTarget string) (
 		inlineRules = append(inlineRules, r)
 	}
 	if !hasMatch {
-		return nil, &ParseError{
-			AppError: model.AppError{
-				Code:    "PROFILE_VALIDATE_ERROR",
-				Message: "缺少兜底规则 MATCH,<ACTION>",
-				Stage:   "parse_profile",
-				URL:     sourceURL,
-				Hint:    "add at end of rule: MATCH,PROXY",
-			},
-		}
+		return nil, &ParseError{AppError: model.AppError{
+			Code:    "PROFILE_VALIDATE_ERROR",
+			Message: "缺少兜底规则 MATCH,<ACTION>",
+			Stage:   "parse_profile",
+			URL:     sourceURL,
+			Hint:    "add at end of rule: MATCH,PROXY",
+		}}
 	}
 
 	return &Spec{
 		Version:       rp.Version,
 		Template:      rp.Template,
 		PublicBaseURL: publicBaseURL,
+		CustomProxies: customProxies,
 		Groups:        groups,
+		ProxyChains:   proxyChains,
 		Ruleset:       rulesets,
 		Rules:         inlineRules,
 	}, nil
@@ -383,7 +521,6 @@ func yamlDecodeStrict(content string, out any) error {
 		return err
 	}
 
-	// Reject multi-document YAML to keep behavior deterministic.
 	var extra any
 	if err := dec.Decode(&extra); err == nil {
 		return errors.New("multiple YAML documents are not allowed")
@@ -470,9 +607,6 @@ func parseGroupDirective(raw string) (GroupSpec, error) {
 			return GroupSpec{}, errors.New("select group requires member list or regex")
 		}
 
-		// Two supported forms:
-		// 1) explicit members: <NAME>`select`[]A[]B...
-		// 2) regex filter:     <NAME>`select`(HK|SG|US)
 		if !strings.HasPrefix(third, "[]") {
 			re, err := regexp.Compile(third)
 			if err != nil {
@@ -483,16 +617,9 @@ func parseGroupDirective(raw string) (GroupSpec, error) {
 					Cause:   err,
 				}
 			}
-			return GroupSpec{
-				Raw:      raw,
-				Name:     name,
-				Type:     "select",
-				RegexRaw: third,
-				Regex:    re,
-			}, nil
+			return GroupSpec{Raw: raw, Name: name, Type: "select", RegexRaw: third, Regex: re}, nil
 		}
 
-		// Explicit members.
 		toks := strings.Split(third, "[]")
 		members := make([]string, 0, len(toks))
 		for _, tok := range toks[1:] {
@@ -505,14 +632,8 @@ func parseGroupDirective(raw string) (GroupSpec, error) {
 		if len(members) == 0 {
 			return GroupSpec{}, errors.New("select group requires at least 1 member")
 		}
-		return GroupSpec{
-			Raw:     raw,
-			Name:    name,
-			Type:    "select",
-			Members: members,
-		}, nil
+		return GroupSpec{Raw: raw, Name: name, Type: "select", Members: members}, nil
 	case "url-test":
-		// <NAME>`url-test`<REGEX>`<URL>`<INTERVAL_SEC>[`<TOLERANCE_MS>]
 		if len(parts) != 5 && len(parts) != 6 {
 			return GroupSpec{}, errors.New("url-test group must be: <NAME>`url-test`<REGEX>`<URL>`<INTERVAL_SEC>[`<TOLERANCE_MS>]")
 		}
@@ -524,11 +645,7 @@ func parseGroupDirective(raw string) (GroupSpec, error) {
 		}
 		re, err := regexp.Compile(regexRaw)
 		if err != nil {
-			return GroupSpec{}, &directiveError{
-				Code:    "GROUP_PARSE_ERROR",
-				Message: "url-test 正则不可编译",
-				Cause:   err,
-			}
+			return GroupSpec{}, &directiveError{Code: "GROUP_PARSE_ERROR", Message: "url-test 正则不可编译", Cause: err}
 		}
 		if err := validateHTTPURL(testURL); err != nil {
 			return GroupSpec{}, err
@@ -546,23 +663,166 @@ func parseGroupDirective(raw string) (GroupSpec, error) {
 				return GroupSpec{}, errors.New("url-test tolerance must be a non-negative integer")
 			}
 		}
-		return GroupSpec{
-			Raw:          raw,
-			Name:         name,
-			Type:         "url-test",
-			RegexRaw:     regexRaw,
-			Regex:        re,
-			TestURL:      testURL,
-			IntervalSec:  intervalSec,
-			ToleranceMS:  tol,
-			HasTolerance: hasTol,
-		}, nil
+		return GroupSpec{Raw: raw, Name: name, Type: "url-test", RegexRaw: regexRaw, Regex: re, TestURL: testURL, IntervalSec: intervalSec, ToleranceMS: tol, HasTolerance: hasTol}, nil
 	default:
-		return GroupSpec{}, &directiveError{
-			Code:    "GROUP_UNSUPPORTED_TYPE",
-			Message: fmt.Sprintf("不支持的策略组类型：%s", typ),
+		return GroupSpec{}, &directiveError{Code: "GROUP_UNSUPPORTED_TYPE", Message: fmt.Sprintf("不支持的策略组类型：%s", typ)}
+	}
+}
+
+func parseCustomProxy(raw rawCustomProxy, requiredTarget string) (model.Proxy, error) {
+	name := strings.TrimSpace(raw.Name)
+	typ := strings.ToLower(strings.TrimSpace(raw.Type))
+	server := strings.ToLower(strings.TrimSpace(raw.Server))
+	username := strings.TrimSpace(raw.Username)
+	password := strings.TrimSpace(raw.Password)
+	if name == "" || typ == "" {
+		return model.Proxy{}, &directiveError{Code: "CUSTOM_PROXY_VALIDATE_ERROR", Message: "custom_proxy.name/type 不能为空"}
+	}
+	if strings.ContainsAny(name, "\r\n\x00") {
+		return model.Proxy{}, &directiveError{Code: "CUSTOM_PROXY_VALIDATE_ERROR", Message: "custom_proxy.name 含有非法控制字符"}
+	}
+	if name == "DIRECT" || name == "REJECT" {
+		return model.Proxy{}, &directiveError{Code: "CUSTOM_PROXY_VALIDATE_ERROR", Message: "custom_proxy.name 不能使用保留名 DIRECT/REJECT"}
+	}
+	if server == "" {
+		return model.Proxy{}, &directiveError{Code: "CUSTOM_PROXY_VALIDATE_ERROR", Message: "custom_proxy.server 不能为空"}
+	}
+	if raw.Port < 1 || raw.Port > 65535 {
+		return model.Proxy{}, &directiveError{Code: "CUSTOM_PROXY_VALIDATE_ERROR", Message: "custom_proxy.port 不合法", Hint: "expected: 1..65535"}
+	}
+
+	p := model.Proxy{
+		Name:       name,
+		Type:       typ,
+		Server:     server,
+		Port:       raw.Port,
+		Username:   username,
+		Password:   password,
+		PluginName: strings.TrimSpace(raw.Plugin),
+	}
+
+	switch p.Type {
+	case "ss":
+		if username != "" {
+			return model.Proxy{}, &directiveError{Code: "CUSTOM_PROXY_VALIDATE_ERROR", Message: "ss 类型的 custom_proxy 不支持 username"}
+		}
+		p.Cipher = strings.ToLower(strings.TrimSpace(raw.Cipher))
+		if p.Cipher == "" || p.Password == "" {
+			return model.Proxy{}, &directiveError{Code: "CUSTOM_PROXY_VALIDATE_ERROR", Message: "ss 类型的 custom_proxy 缺少 cipher 或 password"}
+		}
+		if len(raw.PluginOpts) > 0 {
+			keys := make([]string, 0, len(raw.PluginOpts))
+			for k := range raw.PluginOpts {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			p.PluginOpts = make([]model.KV, 0, len(keys))
+			for _, k := range keys {
+				p.PluginOpts = append(p.PluginOpts, model.KV{Key: strings.TrimSpace(k), Value: strings.TrimSpace(raw.PluginOpts[k])})
+			}
+		}
+	case "http", "https", "socks5", "socks5-tls":
+		if strings.TrimSpace(raw.Cipher) != "" || p.PluginName != "" || len(raw.PluginOpts) > 0 {
+			return model.Proxy{}, &directiveError{Code: "CUSTOM_PROXY_VALIDATE_ERROR", Message: fmt.Sprintf("%s 类型的 custom_proxy 不支持 ss 专属字段", p.Type)}
+		}
+		if (username == "") != (password == "") {
+			return model.Proxy{}, &directiveError{Code: "CUSTOM_PROXY_VALIDATE_ERROR", Message: fmt.Sprintf("%s 类型的 custom_proxy username/password 需要同时出现或同时省略", p.Type)}
+		}
+		if requiredTarget == "surge" {
+			if err := validateSurgeCredentialField(username, "username"); err != nil {
+				return model.Proxy{}, err
+			}
+			if err := validateSurgeCredentialField(password, "password"); err != nil {
+				return model.Proxy{}, err
+			}
+		}
+	default:
+		return model.Proxy{}, &directiveError{Code: "CUSTOM_PROXY_VALIDATE_ERROR", Message: fmt.Sprintf("不支持的 custom_proxy.type：%s", raw.Type)}
+	}
+
+	return p, nil
+}
+
+func validateSurgeCredentialField(value, field string) error {
+	if value == "" {
+		return nil
+	}
+	if strings.ContainsAny(value, "\r\n\x00") {
+		return &directiveError{
+			Code:    "CUSTOM_PROXY_VALIDATE_ERROR",
+			Message: fmt.Sprintf("custom_proxy.%s 含有非法控制字符，无法输出到 Surge", field),
+			Hint:    "forbidden: \\r \\n \\0",
 		}
 	}
+	if strings.Contains(value, ",") {
+		return &directiveError{
+			Code:    "CUSTOM_PROXY_VALIDATE_ERROR",
+			Message: fmt.Sprintf("custom_proxy.%s 含有逗号，无法输出到 Surge", field),
+			Hint:    "remove ',' from credentials for target=surge",
+		}
+	}
+	return nil
+}
+
+func parseChainSpec(raw rawChainSpec) (ChainSpec, error) {
+	out := ChainSpec{
+		Raw:     chainSnippet(raw),
+		Proxy:   strings.TrimSpace(raw.Proxy),
+		Type:    strings.TrimSpace(raw.Type),
+		Pattern: strings.TrimSpace(raw.Pattern),
+		Group:   strings.TrimSpace(raw.Group),
+	}
+	if out.Proxy == "" || out.Type == "" {
+		return ChainSpec{}, &directiveError{Code: "CHAIN_PARSE_ERROR", Message: "proxy_chain.proxy/type 不能为空"}
+	}
+	if strings.ContainsAny(out.Proxy, "\r\n\x00") {
+		return ChainSpec{}, &directiveError{Code: "CHAIN_PARSE_ERROR", Message: "proxy_chain.proxy 含有非法控制字符"}
+	}
+
+	switch out.Type {
+	case "all":
+		if out.Pattern != "" || out.Group != "" {
+			return ChainSpec{}, &directiveError{Code: "CHAIN_PARSE_ERROR", Message: "type=all 的 proxy_chain 不能包含 pattern/group"}
+		}
+	case "regex":
+		if out.Pattern == "" {
+			return ChainSpec{}, &directiveError{Code: "CHAIN_PARSE_ERROR", Message: "type=regex 的 proxy_chain 缺少 pattern"}
+		}
+		if out.Group != "" {
+			return ChainSpec{}, &directiveError{Code: "CHAIN_PARSE_ERROR", Message: "type=regex 的 proxy_chain 不能包含 group"}
+		}
+		re, err := regexp.Compile(out.Pattern)
+		if err != nil {
+			return ChainSpec{}, &directiveError{Code: "CHAIN_PARSE_ERROR", Message: "proxy_chain 正则不可编译", Cause: err}
+		}
+		out.Regex = re
+	case "group":
+		if out.Group == "" {
+			return ChainSpec{}, &directiveError{Code: "CHAIN_PARSE_ERROR", Message: "type=group 的 proxy_chain 缺少 group"}
+		}
+		if out.Pattern != "" {
+			return ChainSpec{}, &directiveError{Code: "CHAIN_PARSE_ERROR", Message: "type=group 的 proxy_chain 不能包含 pattern"}
+		}
+	default:
+		return ChainSpec{}, &directiveError{Code: "CHAIN_PARSE_ERROR", Message: fmt.Sprintf("不支持的 proxy_chain.type：%s", out.Type)}
+	}
+
+	return out, nil
+}
+
+func customProxySnippet(raw rawCustomProxy) string {
+	return truncateSnippet(fmt.Sprintf("name=%s type=%s server=%s port=%d", raw.Name, raw.Type, raw.Server, raw.Port), 200)
+}
+
+func chainSnippet(raw rawChainSpec) string {
+	parts := []string{"proxy=" + strings.TrimSpace(raw.Proxy), "type=" + strings.TrimSpace(raw.Type)}
+	if strings.TrimSpace(raw.Pattern) != "" {
+		parts = append(parts, "pattern="+strings.TrimSpace(raw.Pattern))
+	}
+	if strings.TrimSpace(raw.Group) != "" {
+		parts = append(parts, "group="+strings.TrimSpace(raw.Group))
+	}
+	return truncateSnippet(strings.Join(parts, " "), 200)
 }
 
 func truncateSnippet(s string, max int) string {

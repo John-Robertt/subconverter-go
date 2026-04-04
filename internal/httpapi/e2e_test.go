@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/John-Robertt/subconverter-go/internal/model"
 )
 
 func TestE2E_Materials_ConfigAndList(t *testing.T) {
@@ -117,6 +119,50 @@ func TestE2E_Materials_ConfigAndList(t *testing.T) {
 		if gotRawPOST != wantRaw {
 			t.Fatalf("list raw POST mismatch\n--- got ---\n%q\n--- want ---\n%q", gotRawPOST, wantRaw)
 		}
+	}
+}
+
+func TestE2E_ProxyChainUnsupportedTarget(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/sub.txt":
+			_, _ = w.Write([]byte("ss://YWVzLTEyOC1nY206cGFzc3dvcmQ=@example.com:8388#HK\n"))
+		case "/profile.yaml":
+			base := "http://" + r.Host
+			body := "" +
+				"version: 1\n" +
+				"template:\n" +
+				"  quanx: \"" + base + "/unused.conf\"\n" +
+				"custom_proxy:\n" +
+				"  - name: CORP-HTTP\n" +
+				"    type: http\n" +
+				"    server: proxy.example.com\n" +
+				"    port: 8080\n" +
+				"proxy_chain:\n" +
+				"  - proxy: CORP-HTTP\n" +
+				"    type: all\n" +
+				"rule:\n" +
+				"  - \"MATCH,DIRECT\"\n"
+			_, _ = w.Write([]byte(body))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer up.Close()
+
+	mux := NewMux()
+	req := httptest.NewRequest(http.MethodGet, "/sub?mode=config&target=quanx&sub="+url.QueryEscape(up.URL+"/sub.txt")+"&profile="+url.QueryEscape(up.URL+"/profile.yaml"), nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var resp model.ErrorResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal error response: %v", err)
+	}
+	if resp.Error.Code != "UNSUPPORTED_TARGET_FEATURE" {
+		t.Fatalf("code=%q, want=%q", resp.Error.Code, "UNSUPPORTED_TARGET_FEATURE")
 	}
 }
 

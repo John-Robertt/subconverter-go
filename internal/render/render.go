@@ -79,6 +79,7 @@ func validateRenderInput(res *compiler.Result) error {
 	// Renderers resolve typed group members by proxy ID. Fail fast here so direct
 	// callers get a clear contract error instead of renderer-specific fallout.
 	seenProxyIDs := make(map[string]struct{}, len(res.Proxies))
+	proxyByID := make(map[string]model.Proxy, len(res.Proxies))
 	for i, p := range res.Proxies {
 		if strings.TrimSpace(p.ID) == "" {
 			return &RenderError{
@@ -101,6 +102,33 @@ func validateRenderInput(res *compiler.Result) error {
 			}
 		}
 		seenProxyIDs[p.ID] = struct{}{}
+		proxyByID[p.ID] = p
+	}
+	for _, p := range res.Proxies {
+		if strings.TrimSpace(p.ViaProxyID) == "" {
+			continue
+		}
+		via, ok := proxyByID[p.ViaProxyID]
+		if !ok {
+			return &RenderError{
+				AppError: model.AppError{
+					Code:    "CHAIN_PROXY_NOT_FOUND",
+					Message: "render input 的 ViaProxyID 引用不存在",
+					Stage:   "render",
+					Snippet: p.ViaProxyID,
+				},
+			}
+		}
+		if strings.TrimSpace(via.ViaProxyID) != "" {
+			return &RenderError{
+				AppError: model.AppError{
+					Code:    "INVALID_ARGUMENT",
+					Message: "render input 的 ViaProxyID 只能引用原始订阅节点",
+					Stage:   "render",
+					Snippet: p.ID,
+				},
+			}
+		}
 	}
 	return nil
 }

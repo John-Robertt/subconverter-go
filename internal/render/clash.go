@@ -19,38 +19,11 @@ func renderClash(res *compiler.Result) (Blocks, error) {
 
 	proxyLines := make([]string, 0, len(res.Proxies)*6)
 	for _, p := range res.Proxies {
-		if p.Type != "ss" {
-			return Blocks{}, &RenderError{
-				AppError: model.AppError{
-					Code:    "INVALID_ARGUMENT",
-					Message: "仅支持 ss 节点渲染",
-					Stage:   "render",
-					Snippet: p.Type,
-				},
-			}
+		lines, err := renderClashProxy(p, proxyNames)
+		if err != nil {
+			return Blocks{}, err
 		}
-
-		proxyLines = append(proxyLines, "- name: "+yamlDQ(p.Name))
-		proxyLines = append(proxyLines, "  type: ss")
-		proxyLines = append(proxyLines, "  server: "+yamlDQ(p.Server))
-		proxyLines = append(proxyLines, "  port: "+strconv.Itoa(p.Port))
-		proxyLines = append(proxyLines, "  cipher: "+yamlDQ(strings.ToLower(p.Cipher)))
-		// Always quote password to avoid YAML treating it as number.
-		proxyLines = append(proxyLines, "  password: "+yamlDQ(p.Password))
-
-		if p.PluginName != "" {
-			plugin, mode, host, err := parseSSObfsPlugin(p)
-			if err != nil {
-				return Blocks{}, err
-			}
-			_ = plugin // currently only "obfs"
-			proxyLines = append(proxyLines, "  plugin: obfs")
-			proxyLines = append(proxyLines, "  plugin-opts:")
-			proxyLines = append(proxyLines, "    mode: "+yamlDQ(mode))
-			if host != "" {
-				proxyLines = append(proxyLines, "    host: "+yamlDQ(host))
-			}
-		}
+		proxyLines = append(proxyLines, lines...)
 	}
 
 	groupLines := make([]string, 0, len(res.Groups)*6)
@@ -93,6 +66,76 @@ func renderClash(res *compiler.Result) (Blocks, error) {
 		RuleProviders: ruleProvidersBlock,
 		Rules:         strings.Join(ruleLines, "\n"),
 	}, nil
+}
+
+func renderClashProxy(p model.Proxy, proxyNames map[string]string) ([]string, error) {
+	lines := []string{"- name: " + yamlDQ(p.Name)}
+	switch p.Type {
+	case "ss":
+		lines = append(lines,
+			"  type: ss",
+			"  server: "+yamlDQ(p.Server),
+			"  port: "+strconv.Itoa(p.Port),
+			"  cipher: "+yamlDQ(strings.ToLower(p.Cipher)),
+			"  password: "+yamlDQ(p.Password),
+		)
+		if p.PluginName != "" {
+			plugin, mode, host, err := parseSSObfsPlugin(p)
+			if err != nil {
+				return nil, err
+			}
+			_ = plugin
+			lines = append(lines, "  plugin: obfs", "  plugin-opts:", "    mode: "+yamlDQ(mode))
+			if host != "" {
+				lines = append(lines, "    host: "+yamlDQ(host))
+			}
+		}
+	case "http", "https":
+		lines = append(lines,
+			"  type: http",
+			"  server: "+yamlDQ(p.Server),
+			"  port: "+strconv.Itoa(p.Port),
+		)
+		if p.Type == "https" {
+			lines = append(lines, "  tls: true")
+		}
+		if p.Username != "" || p.Password != "" {
+			lines = append(lines, "  username: "+yamlDQ(p.Username), "  password: "+yamlDQ(p.Password))
+		}
+	case "socks5", "socks5-tls":
+		lines = append(lines,
+			"  type: socks5",
+			"  server: "+yamlDQ(p.Server),
+			"  port: "+strconv.Itoa(p.Port),
+		)
+		if p.Type == "socks5-tls" {
+			lines = append(lines, "  tls: true")
+		}
+		if p.Username != "" || p.Password != "" {
+			lines = append(lines, "  username: "+yamlDQ(p.Username), "  password: "+yamlDQ(p.Password))
+		}
+	default:
+		return nil, &RenderError{AppError: model.AppError{
+			Code:    "INVALID_ARGUMENT",
+			Message: "不支持的代理类型渲染到 Clash",
+			Stage:   "render",
+			Snippet: p.Type,
+		}}
+	}
+
+	if p.ViaProxyID != "" {
+		viaName, ok := proxyNames[p.ViaProxyID]
+		if !ok {
+			return nil, &RenderError{AppError: model.AppError{
+				Code:    "CHAIN_PROXY_NOT_FOUND",
+				Message: "链式代理引用的订阅节点不存在",
+				Stage:   "render",
+				Snippet: p.ViaProxyID,
+			}}
+		}
+		lines = append(lines, "  dialer-proxy: "+yamlDQ(viaName))
+	}
+	return lines, nil
 }
 
 func clashMemberName(member model.MemberRef, proxyNames map[string]string) (string, error) {

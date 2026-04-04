@@ -229,6 +229,93 @@ func TestCompile_SelectRegexMembers(t *testing.T) {
 	}
 }
 
+func TestCompile_ProxyChain_DerivedProxiesAndDiagnosticGroup(t *testing.T) {
+	subs := []model.Proxy{
+		{Type: "ss", Name: "HK", Server: "hk.example.com", Port: 1, Cipher: "aes-128-gcm", Password: "pass"},
+		{Type: "ss", Name: "SG", Server: "sg.example.com", Port: 2, Cipher: "aes-128-gcm", Password: "pass"},
+	}
+	prof := &profile.Spec{
+		Version: 1,
+		CustomProxies: []model.Proxy{{
+			Name:     "CORP-HTTP",
+			Type:     "http",
+			Server:   "proxy.example.com",
+			Port:     8080,
+			Username: "user",
+			Password: "pass",
+		}},
+		Groups: []profile.GroupSpec{
+			{Raw: "PROXY`select`[]@all[]DIRECT", Name: "PROXY", Type: "select", Members: []string{"@all", "DIRECT"}},
+			{Raw: "HTTP-CHAIN`select`(CORP-HTTP via)", Name: "HTTP-CHAIN", Type: "select", RegexRaw: "CORP-HTTP via", Regex: regexp.MustCompile("CORP-HTTP via")},
+		},
+		ProxyChains: []profile.ChainSpec{{Raw: "proxy=CORP-HTTP type=regex pattern=HK", Proxy: "CORP-HTTP", Type: "regex", Pattern: "HK", Regex: regexp.MustCompile("HK")}},
+		Rules:       []model.Rule{{Type: "MATCH", Action: "PROXY"}},
+	}
+
+	got, err := Compile(subs, prof)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got.Proxies) != 3 {
+		t.Fatalf("proxies=%d, want=3", len(got.Proxies))
+	}
+	derived := got.Proxies[2]
+	if derived.Name != "CORP-HTTP via HK" || derived.Type != "http" || derived.ViaProxyID != got.Proxies[0].ID {
+		t.Fatalf("derived proxy=%+v", derived)
+	}
+	if len(got.Groups) != 3 {
+		t.Fatalf("groups=%d, want=3", len(got.Groups))
+	}
+	if got.Groups[1].Name != "HTTP-CHAIN" || !reflect.DeepEqual(got.Groups[1].Members, []model.MemberRef{proxyRef(derived.ID)}) {
+		t.Fatalf("HTTP-CHAIN group=%+v", got.Groups[1])
+	}
+	if got.Groups[2].Name != "CHAIN-CORP-HTTP" || !reflect.DeepEqual(got.Groups[2].Members, []model.MemberRef{proxyRef(derived.ID)}) {
+		t.Fatalf("diag group=%+v", got.Groups[2])
+	}
+}
+
+func TestCompile_ProxyChain_GroupCycle(t *testing.T) {
+	subs := []model.Proxy{{Type: "ss", Name: "HK", Server: "hk.example.com", Port: 1, Cipher: "aes-128-gcm", Password: "pass"}}
+	prof := &profile.Spec{
+		Version:       1,
+		CustomProxies: []model.Proxy{{Name: "CORP-HTTP", Type: "http", Server: "proxy.example.com", Port: 8080}},
+		Groups: []profile.GroupSpec{
+			{Raw: "A`select`[]B", Name: "A", Type: "select", Members: []string{"B"}},
+			{Raw: "B`select`[]A", Name: "B", Type: "select", Members: []string{"A"}},
+		},
+		ProxyChains: []profile.ChainSpec{{Raw: "proxy=CORP-HTTP type=group group=A", Proxy: "CORP-HTTP", Type: "group", Group: "A"}},
+		Rules:       []model.Rule{{Type: "MATCH", Action: "DIRECT"}},
+	}
+
+	_, err := Compile(subs, prof)
+	var ce *CompileError
+	if !errors.As(err, &ce) {
+		t.Fatalf("expected *CompileError, got %T: %v", err, err)
+	}
+	if ce.AppError.Code != "GROUP_REFERENCE_CYCLE" {
+		t.Fatalf("code=%q, want=%q", ce.AppError.Code, "GROUP_REFERENCE_CYCLE")
+	}
+}
+
+func TestCompile_ProxyChain_SelectorEmpty(t *testing.T) {
+	subs := []model.Proxy{{Type: "ss", Name: "HK", Server: "hk.example.com", Port: 1, Cipher: "aes-128-gcm", Password: "pass"}}
+	prof := &profile.Spec{
+		Version:       1,
+		CustomProxies: []model.Proxy{{Name: "CORP-HTTP", Type: "http", Server: "proxy.example.com", Port: 8080}},
+		ProxyChains:   []profile.ChainSpec{{Raw: "proxy=CORP-HTTP type=regex pattern=SG", Proxy: "CORP-HTTP", Type: "regex", Pattern: "SG", Regex: regexp.MustCompile("SG")}},
+		Rules:         []model.Rule{{Type: "MATCH", Action: "DIRECT"}},
+	}
+
+	_, err := Compile(subs, prof)
+	var ce *CompileError
+	if !errors.As(err, &ce) {
+		t.Fatalf("expected *CompileError, got %T: %v", err, err)
+	}
+	if ce.AppError.Code != "CHAIN_SELECTOR_EMPTY" {
+		t.Fatalf("code=%q, want=%q", ce.AppError.Code, "CHAIN_SELECTOR_EMPTY")
+	}
+}
+
 func proxyRef(id string) model.MemberRef {
 	return model.MemberRef{Kind: model.MemberRefProxy, Value: id}
 }

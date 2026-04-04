@@ -54,8 +54,8 @@ v1 优先支持：
 ### 3.1 数据驱动：稳定的“核心中间态”（Core IR）
 
 不同客户端的配置格式不同，这是事实；但它们共享的“转换语义”很小：
-- **节点（Proxy）**
-- **策略组（Group）**
+- **节点（Proxy）**：包含原始订阅节点与链式派生节点
+- **策略组（Group）**：包含用户定义组与自动诊断组
 - **规则（Rule）**
 
 因此本项目的核心中间态（IR）只表达这三类稳定语义；其余差异化的全局字段不进入 IR，由模板承载。
@@ -63,6 +63,11 @@ v1 优先支持：
 其中节点语义在 v1 进一步拆成两层：
 - `proxyID`：节点的内部唯一身份，仅用于编译与渲染阶段的内部关联。
 - `Name`：节点的最终展示名，仅用于正则筛选与目标配置输出。
+
+当 profile 使用 `custom_proxy + proxy_chain` 时，编译器不会把 `custom_proxy` 直接塞进最终输出，而是生成“派生节点”：
+- 每个派生节点对应一个 `(custom_proxy, subscription_proxy)` 二元关系
+- 派生节点与原始订阅节点一起进入最终 `Proxies[]`
+- 自动诊断组 `CHAIN-<custom_proxy.name>` 作为编译器产物追加到 `Groups[]`
 
 对应地，策略组成员在 IR 中不再直接保存“节点名字符串”，而是保存类型化引用：
 - `proxy`：引用某个 `proxyID`
@@ -86,7 +91,9 @@ v1 优先支持：
 ### 3.3 Profile 用 YAML，但“用法像 Rules.ini”
 
 为了易用性，profile 不做深层嵌套结构，而采用“有序指令列表”的风格：
+- `custom_proxy`: object 列表（保序）
 - `custom_proxy_group`: string 列表（保序）
+- `proxy_chain`: object 列表（保序）
 - `ruleset`: string 列表（保序）
 - `rule`: string 列表（保序）
 - `template`: target -> URL 映射
@@ -107,10 +114,14 @@ v1 优先支持：
 
 1) Fetch：拉取订阅/profile/template（以及需要展开时的 ruleset）（超时、大小上限、缓存、并发去重）
 2) Parse：分别解析输入文本为结构化数据（订阅->Proxy；profile->ProfileSpec；ruleset->Rule）
-3) Compile：将 ProfileSpec + Proxies 编译为最终 IR（`proxyID` 生成、组成员引用生成、规则拼装、语义校验、展示名唯一化）
+3) Compile：将 ProfileSpec + Proxies 编译为最终 IR（`proxyID` 生成、组成员引用生成、链式派生节点生成、自动诊断组生成、规则拼装、语义校验、展示名唯一化）
 4) Render：按 target 输出文本；`mode=config` 再注入模板锚点得到最终配置文件
 
 任何阶段失败都返回结构化错误，并附带尽可能多的定位信息（URL/行号/片段/阶段）。
+
+其中 Compile 阶段在使用 `proxy_chain type=group` 时应分成两步理解：
+1. 先基于原始订阅节点预编译用户定义策略组，供 `proxy_chain` 递归选择使用
+2. 再生成派生节点，并基于“最终可输出节点”重新编译最终策略组与自动诊断组
 
 ---
 

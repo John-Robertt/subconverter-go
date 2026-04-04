@@ -207,11 +207,26 @@ template:
 # Surge 的 #!MANAGED-CONFIG 会使用这个 base URL（建议填你的公网域名 + /sub）
 public_base_url: "https://sub-api.example.com/sub"
 
+custom_proxy:
+  - name: CORP-HTTP
+    type: http
+    server: proxy.example.com
+    port: 8080
+    username: user
+    password: pass
+
 custom_proxy_group:
   - "PROXY`select`[]AUTO[]@all[]DIRECT"
   - "AUTO`url-test`(HK|SG|US)`http://www.gstatic.com/generate_204`300`50"
   # 也支持 select 的正则筛选写法（从节点名里筛选）
   - "🇭🇰 Hong Kong`select`(港|HK|Hong Kong)"
+  # 派生节点进入最终输出后，也可以继续被正则组选中
+  - "HTTP-CHAIN`select`(CORP-HTTP via)"
+
+proxy_chain:
+  - proxy: CORP-HTTP
+    type: regex
+    pattern: "(HK|SG)"
 
 ruleset:
   - "DIRECT,https://example.com/rulesets/LAN.list"
@@ -225,8 +240,27 @@ rule:
 重要约束（v1）：
 - `rule` 必须包含兜底 `MATCH,<ACTION>`，否则直接报错（避免生成不可控配置）
 - `ruleset` 在 v1 **不由服务端拉取/校验内容**：只负责“引用 + 绑定 ACTION + 顺序”；确保你的客户端能访问这些 ruleset URL
+- `proxy_chain` 当前只支持 `target=clash|surge`
+- `custom_proxy` 不直接输出；服务端会保留原始订阅节点，并额外生成链式派生节点
+- 每个 `custom_proxy` 会自动生成诊断组 `CHAIN-<custom_proxy.name>`；`CHAIN-` 是保留前缀，用户自定义组名不要使用它
 
 完整规范见：`docs/spec/SPEC_PROFILE_YAML.md`
+
+## 链式代理说明
+
+当你需要“自定义代理无法直连，必须通过订阅节点访问”时，可使用：
+- `custom_proxy`：定义基础代理模板
+- `proxy_chain`：从订阅节点中选择一批节点，为该模板生成链式派生节点
+
+生成后的最终输出会同时保留：
+- 原始订阅节点（用于直接使用与对照诊断）
+- 链式派生节点（例如 `CORP-HTTP via HK`）
+
+这样可以直接比较：
+- `HK` 是否可用
+- `CORP-HTTP via HK` 是否可用
+
+若原始节点可用而链式派生节点不可用，通常更接近“自定义代理本身”或“节点到代理这一段链路”存在问题。
 
 ## 模板（anchors）怎么写
 

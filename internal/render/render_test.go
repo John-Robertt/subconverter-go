@@ -214,6 +214,106 @@ func TestRender_RejectsDuplicateProxyID(t *testing.T) {
 	}
 }
 
+func TestRender_Clash_DerivedHTTPProxyUsesDialerProxy(t *testing.T) {
+	res := &compiler.Result{
+		Proxies: []model.Proxy{
+			{ID: "sub1", Type: "ss", Name: "HK", Server: "hk.example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pass"},
+			{ID: "d1", Type: "http", Name: "CORP-HTTP via HK", Server: "proxy.example.com", Port: 8080, Username: "user", Password: "pass", ViaProxyID: "sub1"},
+		},
+		Groups: []model.Group{{Name: "CHAIN-CORP-HTTP", Type: "select", Members: []model.MemberRef{proxyRef("d1")}}},
+		Rules:  []model.Rule{{Type: "MATCH", Action: "CHAIN-CORP-HTTP"}},
+	}
+
+	blocks, err := Render(TargetClash, res)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(blocks.Proxies, `type: http`) || !strings.Contains(blocks.Proxies, `dialer-proxy: "HK"`) {
+		t.Fatalf("derived clash proxy missing chain fields, got:\n%s", blocks.Proxies)
+	}
+	if !strings.Contains(blocks.Proxies, `username: "user"`) {
+		t.Fatalf("derived clash proxy missing auth fields, got:\n%s", blocks.Proxies)
+	}
+}
+
+func TestRender_Surge_DerivedHTTPProxyUsesUnderlyingProxy(t *testing.T) {
+	res := &compiler.Result{
+		Proxies: []model.Proxy{
+			{ID: "sub1", Type: "ss", Name: "HK", Server: "hk.example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pass"},
+			{ID: "d1", Type: "http", Name: "CORP-HTTP via HK", Server: "proxy.example.com", Port: 8080, Username: "user", Password: "pass", ViaProxyID: "sub1"},
+		},
+		Groups: []model.Group{{Name: "CHAIN-CORP-HTTP", Type: "select", Members: []model.MemberRef{proxyRef("d1")}}},
+		Rules:  []model.Rule{{Type: "MATCH", Action: "CHAIN-CORP-HTTP"}},
+	}
+
+	blocks, err := Render(TargetSurge, res)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(blocks.Proxies, `CORP-HTTP via HK = http, proxy.example.com, 8080, user, pass, underlying-proxy=HK`) {
+		t.Fatalf("derived surge proxy missing chain fields, got:\n%s", blocks.Proxies)
+	}
+}
+
+func TestRender_Surge_RejectsCommaInProxyCredentials(t *testing.T) {
+	res := &compiler.Result{
+		Proxies: []model.Proxy{
+			{ID: "d1", Type: "http", Name: "CORP-HTTP", Server: "proxy.example.com", Port: 8080, Username: "user", Password: "pa,ss"},
+		},
+		Groups: []model.Group{{Name: "PROXY", Type: "select", Members: []model.MemberRef{proxyRef("d1")}}},
+		Rules:  []model.Rule{{Type: "MATCH", Action: "PROXY"}},
+	}
+
+	_, err := Render(TargetSurge, res)
+	var re *RenderError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *RenderError, got %T: %v", err, err)
+	}
+	if re.AppError.Code != "SUB_PARSE_ERROR" {
+		t.Fatalf("code=%q, want=%q", re.AppError.Code, "SUB_PARSE_ERROR")
+	}
+}
+
+func TestRender_Shadowrocket_RejectsProxyChain(t *testing.T) {
+	res := &compiler.Result{
+		Proxies: []model.Proxy{
+			{ID: "sub1", Type: "ss", Name: "HK", Server: "hk.example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pass"},
+			{ID: "d1", Type: "http", Name: "CORP-HTTP via HK", Server: "proxy.example.com", Port: 8080, ViaProxyID: "sub1"},
+		},
+		Groups: []model.Group{{Name: "CHAIN-CORP-HTTP", Type: "select", Members: []model.MemberRef{proxyRef("d1")}}},
+		Rules:  []model.Rule{{Type: "MATCH", Action: "CHAIN-CORP-HTTP"}},
+	}
+
+	_, err := Render(TargetShadowrocket, res)
+	var re *RenderError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *RenderError, got %T: %v", err, err)
+	}
+	if re.AppError.Code != "UNSUPPORTED_TARGET_FEATURE" {
+		t.Fatalf("code=%q, want=%q", re.AppError.Code, "UNSUPPORTED_TARGET_FEATURE")
+	}
+}
+
+func TestRender_Quanx_RejectsProxyChain(t *testing.T) {
+	res := &compiler.Result{
+		Proxies: []model.Proxy{
+			{ID: "sub1", Type: "ss", Name: "HK", Server: "hk.example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pass"},
+			{ID: "d1", Type: "http", Name: "CORP-HTTP via HK", Server: "proxy.example.com", Port: 8080, ViaProxyID: "sub1"},
+		},
+		Groups: []model.Group{{Name: "CHAIN-CORP-HTTP", Type: "select", Members: []model.MemberRef{proxyRef("d1")}}},
+		Rules:  []model.Rule{{Type: "MATCH", Action: "CHAIN-CORP-HTTP"}},
+	}
+
+	_, err := Render(TargetQuanx, res)
+	var re *RenderError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *RenderError, got %T: %v", err, err)
+	}
+	if re.AppError.Code != "UNSUPPORTED_TARGET_FEATURE" {
+		t.Fatalf("code=%q, want=%q", re.AppError.Code, "UNSUPPORTED_TARGET_FEATURE")
+	}
+}
+
 func proxyRef(id string) model.MemberRef {
 	return model.MemberRef{Kind: model.MemberRefProxy, Value: id}
 }

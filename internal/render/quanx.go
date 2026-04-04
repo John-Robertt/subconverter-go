@@ -10,6 +10,17 @@ import (
 )
 
 func renderQuanx(res *compiler.Result) (Blocks, error) {
+	for _, p := range res.Proxies {
+		if p.ViaProxyID != "" {
+			return Blocks{}, &RenderError{AppError: model.AppError{
+				Code:    "UNSUPPORTED_TARGET_FEATURE",
+				Message: "target=quanx 当前不支持 proxy_chain",
+				Stage:   "render",
+				Snippet: p.Name,
+			}}
+		}
+	}
+
 	// Precompute representable proxy tags to keep references consistent.
 	proxyTagRep := make(map[string]string, len(res.Proxies))
 	for _, p := range res.Proxies {

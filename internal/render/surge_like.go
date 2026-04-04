@@ -10,6 +10,19 @@ import (
 )
 
 func renderSurgeLike(res *compiler.Result, isSurge bool) (Blocks, error) {
+	if !isSurge {
+		for _, p := range res.Proxies {
+			if p.ViaProxyID != "" {
+				return Blocks{}, &RenderError{AppError: model.AppError{
+					Code:    "UNSUPPORTED_TARGET_FEATURE",
+					Message: "target=shadowrocket 当前不支持 proxy_chain",
+					Stage:   "render",
+					Snippet: p.Name,
+				}}
+			}
+		}
+	}
+
 	extraBuiltins := 0
 	if !isSurge {
 		// Surge 内置 DIRECT/REJECT；在 [Proxy] 段重复声明会触发 “策略不可以使用内部策略名”。
@@ -33,31 +46,10 @@ func renderSurgeLike(res *compiler.Result, isSurge bool) (Blocks, error) {
 	}
 
 	for _, p := range res.Proxies {
-		if p.Type != "ss" {
-			return Blocks{}, &RenderError{
-				AppError: model.AppError{
-					Code:    "INVALID_ARGUMENT",
-					Message: "仅支持 ss 节点渲染",
-					Stage:   "render",
-					Snippet: p.Type,
-				},
-			}
+		line, err := renderSurgeLikeProxyLine(p, proxyNameRep)
+		if err != nil {
+			return Blocks{}, err
 		}
-
-		name := proxyNameRep[p.ID]
-		line := fmt.Sprintf("%s = ss, %s, %d, encrypt-method=%s, password=%s", name, p.Server, p.Port, strings.ToLower(p.Cipher), p.Password)
-
-		if p.PluginName != "" {
-			_, mode, host, err := parseSSObfsPlugin(p)
-			if err != nil {
-				return Blocks{}, err
-			}
-			line += ", obfs=" + mode
-			if host != "" {
-				line += ", obfs-host=" + host
-			}
-		}
-
 		proxyLines = append(proxyLines, line)
 	}
 
@@ -164,6 +156,73 @@ func renderSurgeLike(res *compiler.Result, isSurge bool) (Blocks, error) {
 		Groups:  strings.Join(groupLines, "\n"),
 		Rules:   strings.Join(ruleLines, "\n"),
 	}, nil
+}
+
+func renderSurgeLikeProxyLine(p model.Proxy, proxyNameRep map[string]string) (string, error) {
+	name := proxyNameRep[p.ID]
+	var line string
+	switch p.Type {
+	case "ss":
+		line = fmt.Sprintf("%s = ss, %s, %d, encrypt-method=%s, password=%s", name, p.Server, p.Port, strings.ToLower(p.Cipher), p.Password)
+		if p.PluginName != "" {
+			_, mode, host, err := parseSSObfsPlugin(p)
+			if err != nil {
+				return "", err
+			}
+			line += ", obfs=" + mode
+			if host != "" {
+				line += ", obfs-host=" + host
+			}
+		}
+	case "http", "https", "socks5", "socks5-tls":
+		line = fmt.Sprintf("%s = %s, %s, %d", name, p.Type, p.Server, p.Port)
+		if p.Username != "" || p.Password != "" {
+			if err := validateSurgeProxyCredential(p.Username, "username"); err != nil {
+				return "", err
+			}
+			if err := validateSurgeProxyCredential(p.Password, "password"); err != nil {
+				return "", err
+			}
+			line += ", " + p.Username + ", " + p.Password
+		}
+	default:
+		return "", &RenderError{AppError: model.AppError{
+			Code:    "INVALID_ARGUMENT",
+			Message: fmt.Sprintf("不支持的代理类型渲染到 Surge：%s", p.Type),
+			Stage:   "render",
+			Snippet: p.Type,
+		}}
+	}
+
+	if p.ViaProxyID != "" {
+		viaName, ok := proxyNameRep[p.ViaProxyID]
+		if !ok {
+			return "", &RenderError{AppError: model.AppError{
+				Code:    "CHAIN_PROXY_NOT_FOUND",
+				Message: "链式代理引用的订阅节点不存在",
+				Stage:   "render",
+				Snippet: p.ViaProxyID,
+			}}
+		}
+		line += ", underlying-proxy=" + viaName
+	}
+	return line, nil
+}
+
+func validateSurgeProxyCredential(value, field string) error {
+	if value == "" {
+		return nil
+	}
+	if strings.ContainsAny(value, "\r\n\x00") || strings.Contains(value, ",") {
+		return &RenderError{AppError: model.AppError{
+			Code:    "SUB_PARSE_ERROR",
+			Message: fmt.Sprintf("代理 %s 含有非法字符，无法输出到 Surge/Shadowrocket", field),
+			Stage:   "render",
+			Snippet: value,
+			Hint:    "forbidden: ',', \\r, \\n, \\0",
+		}}
+	}
+	return nil
 }
 
 func surgeProxyName(name string) (string, error) {

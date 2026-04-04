@@ -9,14 +9,14 @@
 ## 1. 先定数据结构：Core IR
 
 本项目的核心中间态（IR）只需要三类数据（见 `ARCHITECTURE.md`）：
-- Proxy（节点，v1 仅 `ss`）
+- Proxy（节点：原始订阅节点 + 链式派生节点）
 - Group（策略组，v1 仅 `select/url-test`）
 - Rule（规则，v1 仅 Clash classical 子集）
 
 建议把这些类型放在一个极薄的包里（避免循环依赖），例如：
 
 - `internal/model`
-  - `Proxy`：`ID, Name, Type, Server, Port, Cipher, Password, Plugin, PluginOpts ...`
+  - `Proxy`：`ID, Name, Type, Server, Port, Username, Cipher, Password, Plugin, PluginOpts, ViaProxyID ...`
   - `MemberRef`：`Kind(proxy|group|builtin), Value(proxyID|groupName|DIRECT|REJECT)`
   - `Group`：`Name, Type, Members[] | URL/Interval/Tolerance ...`
   - `Rule`：`Type, Value, Action, NoResolve`
@@ -52,7 +52,7 @@
   - 只产出 `[]model.Proxy`，按 `../spec/SPEC_SUBSCRIPTION_SS.md`
 
 - `internal/profile`
-  - profile YAML 解析与校验（`version/template/public_base_url/custom_proxy_group/ruleset/rule`）
+  - profile YAML 解析与校验（`version/template/public_base_url/custom_proxy/custom_proxy_group/proxy_chain/ruleset/rule`）
   - 只产出一个“ProfileSpec”结构体（可以放在 `internal/profile` 包内），按 `../spec/SPEC_PROFILE_YAML.md`
 
 - `internal/rules`
@@ -61,13 +61,18 @@
 
 - `internal/compiler`
   - 把 `ProfileSpec + []Proxy` 编译为最终 IR：`[]Proxy + []Group + []Rule`
-  - 负责：字段规范化、`proxyID` 生成、去重、展示名冲突处理、排序、`@all` 展开、成员引用编译、引用校验、兜底 MATCH 校验
+  - 负责：字段规范化、`proxyID` 生成、去重、展示名冲突处理、排序、`@all` 展开、成员引用编译、链式派生节点生成、自动诊断组生成、引用校验、兜底 MATCH 校验
   - 行为按 `../spec/SPEC_DETERMINISM.md` 与 `../spec/SPEC_PROFILE_YAML.md`
+
+  推荐在实现上保持两阶段：
+  1) 基于原始订阅节点预编译用户定义组，供 `proxy_chain type=group` 递归展开
+  2) 生成派生节点后，再编译最终组与自动诊断组
 
 - `internal/render`
   - 目标渲染：把 IR 渲染为三段文本块（proxies/groups/rules）
   - 可按 target 分子包：`internal/render/clash`、`internal/render/surge`、`internal/render/shadowrocket`、`internal/render/quanx`
   - 对 `proxy` 成员必须先做 `proxyID -> 目标名称表示` 的映射，再输出到对应 target 语法
+  - 对存在 `ViaProxyID` 的节点，只负责输出目标语法中的链式字段（如 `dialer-proxy` / `underlying-proxy`），不负责决定选择器语义
   - 行为按 `../spec/SPEC_RENDER_TARGETS.md`
 
 - `internal/template`

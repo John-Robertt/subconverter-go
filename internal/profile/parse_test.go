@@ -49,6 +49,117 @@ rule:
 	}
 }
 
+func TestParseProfileYAML_CustomProxyAndProxyChain_OK(t *testing.T) {
+	yml := `
+version: 1
+template:
+  clash: "https://example.com/base_clash.yaml"
+custom_proxy:
+  - name: CORP-HTTP
+    type: http
+    server: proxy.example.com
+    port: 8080
+    username: user
+    password: pass
+custom_proxy_group:
+  - "PROXY` + "`" + `select` + "`" + `[]@all[]DIRECT"
+proxy_chain:
+  - proxy: CORP-HTTP
+    type: regex
+    pattern: "HK"
+rule:
+  - "MATCH,PROXY"
+`
+
+	p, err := ParseProfileYAML("https://example.com/profile.yaml", yml, "clash")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(p.CustomProxies) != 1 {
+		t.Fatalf("custom proxies=%d, want=1", len(p.CustomProxies))
+	}
+	if p.CustomProxies[0].Type != "http" || p.CustomProxies[0].Username != "user" {
+		t.Fatalf("custom proxy=%+v", p.CustomProxies[0])
+	}
+	if len(p.ProxyChains) != 1 {
+		t.Fatalf("proxy chains=%d, want=1", len(p.ProxyChains))
+	}
+	if p.ProxyChains[0].Proxy != "CORP-HTTP" || p.ProxyChains[0].Regex == nil {
+		t.Fatalf("proxy chain=%+v", p.ProxyChains[0])
+	}
+}
+
+func TestParseProfileYAML_ReservedChainPrefixRejected(t *testing.T) {
+	yml := `
+version: 1
+template:
+  clash: "https://example.com/base.yaml"
+custom_proxy_group:
+  - "CHAIN-HTTP` + "`" + `select` + "`" + `[]DIRECT"
+rule:
+  - "MATCH,DIRECT"
+`
+	_, err := ParseProfileYAML("https://example.com/profile.yaml", yml, "clash")
+	var pe *ParseError
+	if !errors.As(err, &pe) {
+		t.Fatalf("expected *ParseError, got %T: %v", err, err)
+	}
+	if pe.AppError.Code != "PROFILE_VALIDATE_ERROR" {
+		t.Fatalf("code=%q, want=%q", pe.AppError.Code, "PROFILE_VALIDATE_ERROR")
+	}
+}
+
+func TestParseProfileYAML_ProxyChainUnsupportedTarget(t *testing.T) {
+	yml := `
+version: 1
+template:
+  quanx: "https://example.com/base_quanx.conf"
+custom_proxy:
+  - name: CORP-HTTP
+    type: http
+    server: proxy.example.com
+    port: 8080
+proxy_chain:
+  - proxy: CORP-HTTP
+    type: all
+rule:
+  - "MATCH,DIRECT"
+`
+	_, err := ParseProfileYAML("https://example.com/profile.yaml", yml, "quanx")
+	var pe *ParseError
+	if !errors.As(err, &pe) {
+		t.Fatalf("expected *ParseError, got %T: %v", err, err)
+	}
+	if pe.AppError.Code != "UNSUPPORTED_TARGET_FEATURE" {
+		t.Fatalf("code=%q, want=%q", pe.AppError.Code, "UNSUPPORTED_TARGET_FEATURE")
+	}
+}
+
+func TestParseProfileYAML_SurgeCustomProxyRejectsCommaInPassword(t *testing.T) {
+	yml := `
+version: 1
+template:
+  surge: "https://example.com/base_surge.conf"
+custom_proxy:
+  - name: CORP-HTTP
+    type: http
+    server: proxy.example.com
+    port: 8080
+    username: user
+    password: "pa,ss"
+rule:
+  - "MATCH,DIRECT"
+`
+	_, err := ParseProfileYAML("https://example.com/profile.yaml", yml, "surge")
+	var pe *ParseError
+	if !errors.As(err, &pe) {
+		t.Fatalf("expected *ParseError, got %T: %v", err, err)
+	}
+	if pe.AppError.Code != "CUSTOM_PROXY_VALIDATE_ERROR" {
+		t.Fatalf("code=%q, want=%q", pe.AppError.Code, "CUSTOM_PROXY_VALIDATE_ERROR")
+	}
+}
+
 func TestParseProfileYAML_UnknownTopField_Strict(t *testing.T) {
 	yml := `
 version: 1
