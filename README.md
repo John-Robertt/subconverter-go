@@ -13,20 +13,20 @@
 
 你只需要维护两样东西：
 
-1) **订阅**：节点列表（SS）  
-2) **profile**：策略组/规则/模板 URL（远程托管）
+1. **订阅**：节点列表（SS）
+2. **profile**：策略组/规则/模板 URL（远程托管）
 
 服务端负责把它们“拼装”为目标客户端配置；不执行任何远程内容，只做解析与组装。
 
 ## 快速开始（3 步）
 
-1) 编译：
+1. 编译：
 
 ```bash
 go build -o subconverter-go ./cmd/subconverter-go
 ```
 
-2) 启动：
+2. 启动：
 
 ```bash
 ./subconverter-go -listen 127.0.0.1:25500
@@ -42,7 +42,7 @@ go build -o subconverter-go ./cmd/subconverter-go
   -shutdown-timeout 10s
 ```
 
-3) 访问：
+3. 访问：
 
 ```bash
 curl -fsS http://127.0.0.1:25500/healthz
@@ -67,6 +67,7 @@ curl -fsS -o subconverter-errors.zip http://127.0.0.1:25500/logs/errors.zip
 ```
 
 说明：
+
 - `-error-log-dir` 未指定时，默认当前工作目录。
 - 启动前会检查日志目录是否可读可写；若不可用，服务会直接退出并提示容器挂载可写卷或调整 `WORKDIR` / `-error-log-dir`。
 - 运行期间若日志目录失效，或错误快照写入/导出出现真实 I/O 故障，`/healthz` 会返回 `503`，便于容器健康检查接管重启。
@@ -106,7 +107,7 @@ docker run --rm \
 
 ```yaml
 healthcheck:
-  test: [ "CMD", "/subconverter-go", "-healthcheck" ]
+  test: ["CMD", "/subconverter-go", "-healthcheck"]
   interval: 10s
   timeout: 3s
   retries: 20
@@ -116,7 +117,7 @@ healthcheck:
 
 ```yaml
 healthcheck:
-  test: [ "CMD", "/subconverter-go", "-healthcheck", "-listen", "0.0.0.0:25500" ]
+  test: ["CMD", "/subconverter-go", "-healthcheck", "-listen", "0.0.0.0:25500"]
 ```
 
 ## 预编译二进制（GitHub Releases）
@@ -141,6 +142,7 @@ curl -G 'http://127.0.0.1:25500/sub' \
 ```
 
 参数说明：
+
 - `target`: `clash|surge|shadowrocket|quanx`
 - `sub`: 订阅 URL，可重复传多个（按出现顺序合并）
 - `profile`: profile YAML 的 URL
@@ -187,13 +189,17 @@ curl -fsS -o subconverter-errors.zip \
 ```
 
 返回内容：
+
 - `application/zip`
 - ZIP 内只包含按天切分的 `errors-YYYY-MM-DD.jsonl`
 - 若当前还没有真实失败日志，接口返回 `404`
 
 ## profile.yaml（最小可用示例）
 
-profile 是一个 YAML 文件，但写法尽量贴近 `Rules.ini` 的“指令列表”。
+profile 是一个 YAML 文件：
+
+- 策略组、规则集、inline rule 仍尽量贴近 `Rules.ini` 的“指令列表”
+- 链式代理出口使用结构化对象，避免多协议字段塞进字符串 DSL
 
 ```yaml
 version: 1
@@ -207,11 +213,24 @@ template:
 # Surge 的 #!MANAGED-CONFIG 会使用这个 base URL（建议填你的公网域名 + /sub）
 public_base_url: "https://sub-api.example.com/sub"
 
+custom_proxy:
+  - name: EXIT
+    type: socks5
+    server: 1.2.3.4
+    port: 1080
+    username: user
+    password: pass
+
 custom_proxy_group:
   - "PROXY`select`[]AUTO[]@all[]DIRECT"
   - "AUTO`url-test`(HK|SG|US)`http://www.gstatic.com/generate_204`300`50"
   # 也支持 select 的正则筛选写法（从节点名里筛选）
   - "🇭🇰 Hong Kong`select`(港|HK|Hong Kong)"
+
+proxy_chain:
+  - type: regex
+    pattern: "(HK|SG|US)"
+    via: EXIT
 
 ruleset:
   - "DIRECT,https://example.com/rulesets/LAN.list"
@@ -222,9 +241,42 @@ rule:
   - "MATCH,PROXY"
 ```
 
+`proxy_chain` 的 `type` 列表：
+
+- `all`
+  - 命中全部订阅节点
+  - 只需要 `via`
+- `regex`
+  - 用 Go RE2 正则匹配订阅节点 `MatchName`
+  - 需要 `pattern` + `via`
+- `group`
+  - 引用已定义`custom_proxy_group`策略组，并递归展开为最终订阅节点集合
+  - 需要 `group` + `via`
+
+例如：
+
+```yaml
+proxy_chain:
+  - type: all
+    via: EXIT
+
+  - type: regex
+    pattern: "(HK|SG)"
+    via: EXIT
+
+  - type: group
+    group: PROXY
+    via: EXIT
+```
+
 重要约束（v1）：
+
 - `rule` 必须包含兜底 `MATCH,<ACTION>`，否则直接报错（避免生成不可控配置）
 - `ruleset` 在 v1 **不由服务端拉取/校验内容**：只负责“引用 + 绑定 ACTION + 顺序”；确保你的客户端能访问这些 ruleset URL
+- `proxy_chain` 当前只支持 `target=clash|surge`
+- `proxy_chain.type=regex` / `group` 若选择结果为空会直接报错
+- 同一订阅节点命中多个 `proxy_chain` 时：`via` 相同允许，`via` 不同报错
+- `custom_proxy` 当前支持 `ss/http/https/socks5/socks5-tls`
 
 完整规范见：`docs/spec/SPEC_PROFILE_YAML.md`
 
@@ -252,6 +304,7 @@ rules:
 ## Clash rule-providers（mihomo）说明
 
 为了避免把大型 ruleset 展开成几十万行，Clash 输出采用：
+
 - `rule-providers:`：每个 `ruleset` URL 生成一个 provider
 - `rules:`：按顺序输出 `RULE-SET,<providerName>,<ACTION>`，再追加 profile 的 inline rules
 
@@ -260,6 +313,7 @@ rules:
 ## 错误如何排查
 
 任何解析/校验失败都会返回结构化 JSON（便于你修改远程文件），例如：
+
 - `code`：错误码（如 `PROFILE_PARSE_ERROR`、`TEMPLATE_ANCHOR_MISSING`）
 - `stage`：出错阶段（如 `parse_profile`、`validate_template`）
 - `url/line/snippet/hint`：定位信息（如果适用）
@@ -268,6 +322,7 @@ rules:
 对于转换失败，服务端还会把脱敏后的错误快照追加到按天日志文件中，并可通过 `GET /logs/errors.zip` 打包下载。
 
 错误快照与健康检查的关系：
+
 - 只有真实转换失败时，才会追加 `errors-YYYY-MM-DD.jsonl`
 - `/healthz` 在健康状态下只做无副作用检查，不会创建空日志文件
 - 若某次错误快照写入失败，服务仍会把原始业务错误返回给客户端，但随后 `/healthz` 会进入 `503`，让容器或外部探针发现“错误日志持久化能力已失效”
@@ -278,6 +333,7 @@ rules:
 ## 安全提示（很重要）
 
 本服务会主动拉取这些 URL（仅 `http/https`）：
+
 - `sub=...`（订阅）
 - `profile=...`（profile YAML）
 - profile 里的 `template.*`（模板）
@@ -285,6 +341,7 @@ rules:
 并且 v1 **允许内网访问**（为了支持“订阅在内网”的场景）。这意味着：如果你把服务暴露到不可信网络，它天然具备 SSRF 风险。
 
 建议的最小安全姿势：
+
 - 默认只监听 `127.0.0.1`，需要对外提供时放到反代后并加鉴权（token/白名单/隔离网络）
 
 ## 文档与材料

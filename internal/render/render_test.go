@@ -163,3 +163,70 @@ func TestRender_Quanx_IPv6ServerBracketed(t *testing.T) {
 		t.Fatalf("IPv6 server should be bracketed, got:\n%s", blocks.Proxies)
 	}
 }
+
+func TestRender_Clash_CustomProxyAndDialerProxy(t *testing.T) {
+	res := &compiler.Result{
+		Proxies: []model.Proxy{
+			{ID: "custom:1", Type: "https", Name: "EXIT", Server: "1.2.3.4", Port: 443, Username: "user", Password: "pass"},
+			{ID: "sub:1", Type: "ss", Name: "HK", Server: "example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pass", ViaProxyID: "custom:1"},
+		},
+		Groups: []model.Group{{Name: "PROXY", Type: "select", Members: []string{"HK", "DIRECT"}}},
+		Rules:  []model.Rule{{Type: "MATCH", Action: "PROXY"}},
+	}
+
+	blocks, err := Render(TargetClash, res)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(blocks.Proxies, "type: http") || !strings.Contains(blocks.Proxies, "tls: true") {
+		t.Fatalf("https custom proxy should render as http+tls, got:\n%s", blocks.Proxies)
+	}
+	if !strings.Contains(blocks.Proxies, `dialer-proxy: "EXIT"`) {
+		t.Fatalf("subscription proxy should render dialer-proxy, got:\n%s", blocks.Proxies)
+	}
+	if !strings.Contains(blocks.Proxies, `username: "user"`) {
+		t.Fatalf("custom proxy username missing, got:\n%s", blocks.Proxies)
+	}
+}
+
+func TestRender_Surge_CustomProxyAndUnderlyingProxy(t *testing.T) {
+	res := &compiler.Result{
+		Proxies: []model.Proxy{
+			{ID: "custom:1", Type: "socks5", Name: "EXIT", Server: "1.2.3.4", Port: 1080, Username: "user", Password: "pass"},
+			{ID: "sub:1", Type: "ss", Name: "HK", Server: "example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pass", ViaProxyID: "custom:1"},
+		},
+		Groups: []model.Group{{Name: "PROXY", Type: "select", Members: []string{"HK", "DIRECT"}}},
+		Rules:  []model.Rule{{Type: "MATCH", Action: "PROXY"}},
+	}
+
+	blocks, err := Render(TargetSurge, res)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(blocks.Proxies, `EXIT = socks5, 1.2.3.4, 1080, user, pass`) {
+		t.Fatalf("custom socks5 proxy missing, got:\n%s", blocks.Proxies)
+	}
+	if !strings.Contains(blocks.Proxies, `HK = ss, example.com, 8388, encrypt-method=aes-128-gcm, password=pass, underlying-proxy=EXIT`) {
+		t.Fatalf("subscription proxy should render underlying-proxy, got:\n%s", blocks.Proxies)
+	}
+}
+
+func TestRender_Shadowrocket_ProxyChainUnsupported(t *testing.T) {
+	res := &compiler.Result{
+		Proxies: []model.Proxy{
+			{ID: "custom:1", Type: "socks5", Name: "EXIT", Server: "1.2.3.4", Port: 1080},
+			{ID: "sub:1", Type: "ss", Name: "HK", Server: "example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pass", ViaProxyID: "custom:1"},
+		},
+		Groups: []model.Group{{Name: "PROXY", Type: "select", Members: []string{"HK"}}},
+		Rules:  []model.Rule{{Type: "MATCH", Action: "PROXY"}},
+	}
+
+	_, err := Render(TargetShadowrocket, res)
+	var re *RenderError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *RenderError, got %T: %v", err, err)
+	}
+	if re.AppError.Code != "UNSUPPORTED_TARGET_FEATURE" {
+		t.Fatalf("code=%q, want=%q", re.AppError.Code, "UNSUPPORTED_TARGET_FEATURE")
+	}
+}

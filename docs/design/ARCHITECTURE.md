@@ -74,17 +74,29 @@ v1 优先支持：
 - 锚点必须 **独占一行**（避免替换后破坏语法）。
 - 对 YAML（Clash）模板需要保留/继承锚点行的缩进，以保证注入后的缩进合法。
 
-### 3.3 Profile 用 YAML，但“用法像 Rules.ini”
+### 3.3 Profile 用 YAML，但区分“有序指令列表”和“结构化对象”
 
-为了易用性，profile 不做深层嵌套结构，而采用“有序指令列表”的风格：
+为了易用性，profile 的大部分编译指令仍采用“有序列表”的风格：
 - `custom_proxy_group`: string 列表（保序）
 - `ruleset`: string 列表（保序）
 - `rule`: string 列表（保序）
-- `template`: target -> URL 映射
 
-这样既保留 Rules.ini 的可读性，又避免 INI 解析对“重复 key/顺序”的天然不友好。
+但链式代理出口本身是多协议对象，不适合再塞回字符串 DSL。因此 v1 额外引入两类结构化字段：
+- `custom_proxy`: object 列表（定义 `EXIT`）
+- `proxy_chain`: object 列表（定义“订阅节点集合 -> EXIT”）
 
-### 3.4 统一规则输入：Clash classical
+这样既保留 Rules.ini 风格的可读性，又避免多协议代理和 selector 语义落入脆弱的字符串解析。
+
+### 3.4 内部身份与对外名称分离
+
+订阅节点名称不适合作为内部身份。v1 需要明确区分：
+- `ProxyID`：编译期内部唯一标识
+- `MatchName`：用于 regex/group selector 的匹配名
+- `DisplayName`：最终渲染输出的显示名
+
+链式代理、策略组递归展开、冲突检测都必须基于 `ProxyID`，而不是基于字符串名称。
+
+### 3.5 统一规则输入：Clash classical
 
 远程 ruleset 与 inline rule 都按 Clash classical 规则行解析，构建成 IR 的 `Rule` 列表，再由各 target renderer 输出到对应语法。
 
@@ -98,7 +110,12 @@ v1 优先支持：
 
 1) Fetch：拉取订阅/profile/template（以及需要展开时的 ruleset）（超时、大小上限、缓存、并发去重）
 2) Parse：分别解析输入文本为结构化数据（订阅->Proxy；profile->ProfileSpec；ruleset->Rule）
-3) Compile：将 ProfileSpec + Proxies 编译为最终 IR（组生成、规则拼装、语义校验）
+3) Compile：将 ProfileSpec + Proxies 编译为最终 IR，至少包含：
+   - 订阅节点去重与 `ProxyID` 分配
+   - `custom_proxy` 编译
+   - 策略组生成与递归展开能力
+   - `proxy_chain` selector 展开与冲突检测
+   - 最终 `DisplayName` 分配
 4) Render：按 target 输出文本；`mode=config` 再注入模板锚点得到最终配置文件
 
 任何阶段失败都返回结构化错误，并附带尽可能多的定位信息（URL/行号/片段/阶段）。
