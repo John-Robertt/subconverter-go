@@ -7,14 +7,6 @@ template:
 
 public_base_url: "http://127.0.0.1:25500/sub"
 
-custom_proxy:
-  - name: EXIT
-    type: socks5
-    server: 127.0.0.1
-    port: 1080
-    username: demo
-    password: demo
-
 custom_proxy_group:
   # 主选择组：包含测速组 + 所有节点 + 直连
   - "PROXY`select`[]AUTO[]@all[]DIRECT"
@@ -22,11 +14,6 @@ custom_proxy_group:
   - "AUTO`url-test`(Example|HK|SG|US)`http://www.gstatic.com/generate_204`300`50"
   # 也支持 select 的正则筛选写法（从节点名里筛选）
   - "🇭🇰 Hong Kong`select`(港|HK|Hong Kong)"
-
-proxy_chain:
-  # 全部订阅节点都经由 EXIT 出口访问上游服务端
-  - type: all
-    via: EXIT
 
 ruleset:
   # ruleset 行语法：ACTION,URL

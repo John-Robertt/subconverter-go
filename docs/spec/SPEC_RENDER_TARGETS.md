@@ -3,7 +3,7 @@
 本文档定义：编译阶段产出的“核心中间态”（IR：Proxies/Groups/Rules）如何渲染为各目标客户端可导入的配置文本。
 
 原则：
-- 只覆盖 v1 承诺的最小能力集（订阅输入仍为 SS 节点、`select/url-test` 策略组、Clash classical 规则、Clash/Surge 支持链式代理）。
+- 只覆盖 v1 承诺的最小能力集（SS 节点、`select/url-test` 策略组、Clash classical 规则）。
 - 目标差异通过“渲染阶段”吸收：同一份 profile 可以生成不同客户端配置（字段/段落语法不同）。
 - ruleset（`profile.ruleset`）对不同 target 的处理：
   - Clash（mihomo）：生成 `rule-providers`（每个 URL 一个 provider），并在 `rules:` 中输出 `RULE-SET,<PROVIDER_NAME>,<ACTION>`（不展开 ruleset 内容）
@@ -18,9 +18,7 @@
 ## 1. 输入：核心中间态（IR）假设
 
 渲染器接收编译后的结构化数据：
-- `Proxies[]`：包含两类代理：
-  - 订阅节点：仅包含 `type=ss`
-  - `custom_proxy`：可为 `ss/http/https/socks5/socks5-tls`
+- `Proxies[]`：仅包含 `type=ss`
 - `Groups[]`：仅包含 `type=select|url-test`
 - `Rules[]`：仅包含 v1 规则类型（不同 target 支持矩阵不同）：  
   `DOMAIN/DOMAIN-SUFFIX/DOMAIN-KEYWORD/IP-CIDR/IP-CIDR6/GEOIP/PROCESS-NAME/URL-REGEX/MATCH`
@@ -30,16 +28,8 @@
   - Quantumult X：渲染为 `[filter_remote]` 的远程引用行
 
 并且应已满足《输出稳定性与规范化规范》：
-- 订阅节点已去重、命名唯一、顺序稳定
-- `custom_proxy` 已裁剪为“被生效 `proxy_chain` 规则引用到的出口代理集合”
-- group 与 chain 的内部引用已基于 `ProxyID` 完成解析
-- `@all` 已展开为具体订阅节点名（或编译器可在渲染时展开，但必须等价且稳定）
-
-链式代理支持矩阵（v1）：
-- Clash（mihomo）：支持
-- Surge：支持
-- Shadowrocket：当前规范不承诺
-- Quantumult X：当前规范不承诺
+- 节点已去重、命名唯一、顺序稳定（按订阅合并顺序）
+- `@all` 已展开为具体节点名（或编译器可在渲染时展开，但必须等价且稳定）
 
 ---
 
@@ -71,10 +61,8 @@
 
 ### 3.1 proxiesBlock（YAML sequence items）
 
-#### 3.1.1 订阅 SS 节点
-
-每个订阅 SS 节点输出为一个 YAML mapping（作为 list item），字段最小集合：
-- `name`：最终 `DisplayName`
+每个 SS 节点输出为一个 YAML mapping（作为 list item），字段最小集合：
+- `name`：节点名（字符串）
 - `type`：固定为 `ss`
 - `server`：服务器地址
 - `port`：端口（整数）
@@ -85,7 +73,6 @@
 - `udp`：布尔；仅当 IR 指定 UDP 且目标支持时输出
 - `tfo`：布尔；仅当 IR 指定 TFO 且目标支持时输出
 - `plugin` / `plugin-opts`：仅当 SS 节点携带 plugin 且属于支持矩阵时输出
-- `dialer-proxy`：仅当该订阅节点存在链式出口时输出，值为对应 `custom_proxy` 的最终显示名
 
 密码的 YAML 表达要求：
 - 若 `password` 仅由数字组成，仍必须作为字符串输出（禁止被 YAML 解释为数字）。
@@ -99,31 +86,6 @@ v1 支持：
   - `plugin-opts.host`：来自 `plugin` 参数中的 `obfs-host=...`（可空）
 
 其它 plugin：必须报错（错误码建议 `UNSUPPORTED_PLUGIN`），而不是静默丢弃。
-
-#### 3.1.2 `custom_proxy`
-
-`custom_proxy` 作为出口代理，也写入 `proxies:`，仅支持以下类型：
-- `ss`
-- `http`
-- `https`
-- `socks5`
-- `socks5-tls`
-
-最小字段集合：
-- `name`
-- `type`
-- `server`
-- `port`
-
-可选字段：
-- `username`
-- `password`
-
-其中：
-- `type=ss` 时还需要 `cipher` 与 `password`
-- `type=https` 时渲染为 `type: http` 且追加 `tls: true`
-- `type=socks5-tls` 时渲染为 `type: socks5` 且追加 `tls: true`
-- `custom_proxy` 不输出 `dialer-proxy`；链式关系只作用于订阅节点
 
 ### 3.2 groupsBlock（YAML sequence items）
 
@@ -212,12 +174,12 @@ DIRECT = direct
 REJECT = reject
 ```
 
-#### 4.2.2 订阅 SS 节点行
+#### 4.2.2 SS 节点行
 
-每个订阅 SS 节点输出为一行：
+每个 SS 节点输出为一行：
 
 ```
-<NAME> = ss, <SERVER>, <PORT>, encrypt-method=<CIPHER>, password=<PASSWORD>[, <EXTRA_KV>...][, underlying-proxy=<EXIT_NAME>]
+<NAME> = ss, <SERVER>, <PORT>, encrypt-method=<CIPHER>, password=<PASSWORD>[, <EXTRA_KV>...]
 ```
 
 可选追加字段（出现时必须是 `, key=value` 或 `, key=true|false` 形式）：
@@ -229,27 +191,7 @@ SS plugin（Surge）：
 - 当节点携带该 plugin 时，将其 options 以 Surge 参数形式追加（典型为 `obfs=...`、`obfs-host=...`）。
 - 其它 plugin：必须报错（`UNSUPPORTED_PLUGIN`）。
 
-链式代理（Surge）：
-- 当订阅节点存在链式出口时，必须追加 `underlying-proxy=<EXIT_NAME>`。
-- `<EXIT_NAME>` 必须引用同一份输出中某个 `custom_proxy` 的最终显示名。
-
-#### 4.2.3 `custom_proxy` 行
-
-`custom_proxy` 写入 `[Proxy]` 段，支持以下最小语法：
-
-```ini
-<NAME> = ss, <SERVER>, <PORT>, encrypt-method=<CIPHER>, password=<PASSWORD>
-<NAME> = http, <SERVER>, <PORT>[, <USERNAME>, <PASSWORD>]
-<NAME> = https, <SERVER>, <PORT>[, <USERNAME>, <PASSWORD>]
-<NAME> = socks5, <SERVER>, <PORT>[, <USERNAME>, <PASSWORD>]
-<NAME> = socks5-tls, <SERVER>, <PORT>[, <USERNAME>, <PASSWORD>]
-```
-
-约束：
-- `custom_proxy` 不追加 `underlying-proxy`；链式关系只作用于订阅节点。
-- 若 `username/password` 任一存在，应按目标客户端允许的成对语法输出。
-
-#### 4.2.4 名称可表示性（Surge）
+#### 4.2.3 名称可表示性（Surge）
 
 由于 Surge 语法使用 `NAME = ...` 与逗号分隔成员列表，v1 约束：
 - 策略组名（来自 profile）与规则 action（组名）不得包含 `,` 或 `=` 或控制字符；否则必须报错（用户可改 profile）。
@@ -306,15 +248,12 @@ v1 规定 Shadowrocket 的渲染语法与 Surge 相同（使用 `[Proxy]` / `[Pr
 差异点：
 - 不要求输出 `#!MANAGED-CONFIG`（Shadowrocket 订阅更新机制与 Surge 不同）。
 - 其余 proxies/groups/rules 的行语法与名称约束与 Surge 相同。
-- 当前规范不承诺 `proxy_chain` 在 Shadowrocket 上可用；profile 若使用链式代理，是否拒绝该 target 由《HTTP API 规范》定义。
 
 ---
 
 ## 6. 目标：Quantumult X（INI-like）
 
 Quantumult X（简称 QuanX）同样采用 INI-like 段落结构，但节点/策略组/规则的语法与 Surge 系略有不同。
-
-当前规范不承诺 `proxy_chain` 在 QuanX 上可用。
 
 ### 6.1 proxiesBlock（写入 `[server_local]` 段）
 

@@ -9,14 +9,14 @@
 ## 1. 先定数据结构：Core IR
 
 本项目的核心中间态（IR）只需要三类数据（见 `ARCHITECTURE.md`）：
-- Proxy（订阅节点为 `ss`；`custom_proxy` 可为 `ss/http/https/socks5/socks5-tls`）
+- Proxy（节点，v1 仅 `ss`）
 - Group（策略组，v1 仅 `select/url-test`）
 - Rule（规则，v1 仅 Clash classical 子集）
 
 建议把这些类型放在一个极薄的包里（避免循环依赖），例如：
 
 - `internal/model`
-  - `Proxy`：`ID, Source, MatchName, Name, ViaProxyID, Type, Server, Port, Username, Password, Cipher, PluginName, PluginOpts ...`
+  - `Proxy`：`Name, Type, Server, Port, Cipher, Password, Plugin, PluginOpts, UDP, TFO ...`
   - `Group`：`Name, Type, Members[] | Regex/URL/Interval/Tolerance ...`
   - `Rule`：`Type, Value, Action, NoResolve`
   - `AppError`：与 `../spec/SPEC_HTTP_API.md` 对齐的结构化错误（`code/message/stage/url/line/snippet/hint`）
@@ -47,7 +47,7 @@
   - 只产出 `[]model.Proxy`，按 `../spec/SPEC_SUBSCRIPTION_SS.md`
 
 - `internal/profile`
-  - profile YAML 解析与校验（`version/template/public_base_url/custom_proxy/custom_proxy_group/proxy_chain/ruleset/rule`）
+  - profile YAML 解析与校验（`version/template/public_base_url/custom_proxy_group/ruleset/rule`）
   - 只产出一个“ProfileSpec”结构体（可以放在 `internal/profile` 包内），按 `../spec/SPEC_PROFILE_YAML.md`
 
 - `internal/rules`
@@ -56,13 +56,12 @@
 
 - `internal/compiler`
   - 把 `ProfileSpec + []Proxy` 编译为最终 IR：`[]Proxy + []Group + []Rule`
-  - 负责：订阅去重、`ProxyID` 分配、`custom_proxy` 编译、命名冲突处理、排序、`@all` 展开、group 递归展开、`proxy_chain` 冲突检测、引用校验、兜底 MATCH 校验
+  - 负责：去重/命名冲突处理/排序/`@all` 展开/引用校验/兜底 MATCH 校验
   - 行为按 `../spec/SPEC_DETERMINISM.md` 与 `../spec/SPEC_PROFILE_YAML.md`
 
 - `internal/render`
   - 目标渲染：把 IR 渲染为三段文本块（proxies/groups/rules）
   - 可按 target 分子包：`internal/render/clash`、`internal/render/surge`、`internal/render/shadowrocket`、`internal/render/quanx`
-  - 负责把 `ViaProxyID` 解析成最终显示名，并按 target 输出 `dialer-proxy` / `underlying-proxy`
   - 行为按 `../spec/SPEC_RENDER_TARGETS.md`
 
 - `internal/template`
@@ -82,10 +81,6 @@ v1 的正确扩展方式：
 - 新输入：新增一个 parser（产出同一个 `[]Proxy`）
 - 新 target：新增一个 renderer（消费同一个 IR）
 - 新规则类型：扩展 `internal/rules` 的 parser + `internal/render/*` 的映射（缺任何一段都必须报错）
-
-补充：
-- `custom_proxy` 不进入策略组成员池；策略组始终只面向订阅节点集合工作。
-- `group` 类型的 chain selector 是“借策略组选订阅节点”，不是“把策略组本身当成 EXIT”。
 
 ---
 

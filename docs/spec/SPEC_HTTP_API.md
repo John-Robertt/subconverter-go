@@ -12,7 +12,6 @@ v1 约定：
 因此：
 - ruleset 文件内部的语法错误不会在服务端提前暴露（由客户端在拉取/更新时自行报错）。
 - 服务端仍必须校验 `ruleset` 指令本身的语法，并校验 `ACTION` 引用必须存在（组名/DIRECT/REJECT）。
-- `proxy_chain` 仅对 `target=clash|surge` 生效；若 profile 使用该特性而目标不支持，服务端必须返回错误。
 
 ---
 
@@ -149,7 +148,7 @@ body：
 
 状态码建议（最小集合）：
 - `400`：请求参数不合法（缺字段/枚举值不支持/JSON 非法）
-- `422`：远程内容、语义校验或目标特性约束失败（profile/模板/订阅内容解析失败、引用不成立、目标不支持 `proxy_chain` 等）
+- `422`：远程内容或语义校验失败（profile/模板/订阅内容解析失败、引用不成立等）
 - `502`：拉取远程资源失败（非超时，如连接失败、DNS 失败、上游返回 5xx 等）
 - `504`：拉取远程资源超时
 - `500`：服务端内部错误（bug）
@@ -165,8 +164,6 @@ body：
 - `SUB_UNSUPPORTED_SCHEME`
 - `PROFILE_PARSE_ERROR`
 - `PROFILE_VALIDATE_ERROR`
-- `CUSTOM_PROXY_PARSE_ERROR`
-- `CUSTOM_PROXY_VALIDATE_ERROR`
 - `TEMPLATE_ANCHOR_MISSING`
 - `TEMPLATE_ANCHOR_DUP`
 - `TEMPLATE_SECTION_ERROR`（Shadowrocket 锚点不在对应 section）
@@ -174,17 +171,10 @@ body：
 - `RULE_PARSE_ERROR`
 - `GROUP_PARSE_ERROR`
 - `GROUP_UNSUPPORTED_TYPE`
-- `GROUP_REFERENCE_CYCLE`
-- `CHAIN_PARSE_ERROR`
-- `CHAIN_SELECTOR_EMPTY`
-- `CHAIN_GROUP_NOT_FOUND`
-- `CHAIN_VIA_NOT_FOUND`
-- `CHAIN_CONFLICT`
 - `UNSUPPORTED_PLUGIN`
 - `UNSUPPORTED_RULE_TYPE`
 - `REFERENCE_NOT_FOUND`
 - `UNSUPPORTED_TARGET`
-- `UNSUPPORTED_TARGET_FEATURE`
 
 ---
 
