@@ -12,3 +12,4 @@ SS*.txt
 .DS_Store
 .playwright-cli
 .cache
+exit.txt
